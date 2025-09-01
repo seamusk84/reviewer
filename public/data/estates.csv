@@ -1,0 +1,506 @@
+county,town,estate
+Antrim,Antrim,All Areas
+Antrim,Ballymena,All Areas
+Antrim,Ballymoney,All Areas
+Antrim,Bushmills,All Areas
+Antrim,Carrickfergus,All Areas
+Antrim,Crumlin,All Areas
+Antrim,Larne,All Areas
+Antrim,Lisburn,All Areas
+Antrim,Newtownabbey,All Areas
+Antrim,Portrush,All Areas
+Antrim,Templepatrick,All Areas
+Armagh,Armagh,All Areas
+Armagh,Keady,All Areas
+Armagh,Lurgan,All Areas
+Armagh,Markethill,All Areas
+Armagh,Newtownhamilton,All Areas
+Armagh,Portadown,All Areas
+Armagh,Tandragee,All Areas
+Carlow,Ballon,All Areas
+Carlow,Borris,All Areas
+Carlow,Carlow,All Areas
+Carlow,Fenagh,All Areas
+Carlow,Hacketstown,All Areas
+Carlow,Leighlinbridge,All Areas
+Carlow,Muine Bheag (Bagenalstown),All Areas
+Carlow,Rathvilly,All Areas
+Carlow,Tullow,All Areas
+Cavan,Arva,All Areas
+Cavan,Bailieborough,All Areas
+Cavan,Ballyjamesduff,All Areas
+Cavan,Belturbet,All Areas
+Cavan,Cavan,All Areas
+Cavan,Cootehill,All Areas
+Cavan,Killeshandra,All Areas
+Cavan,Kilnaleck,All Areas
+Cavan,Kingscourt,All Areas
+Cavan,Virginia,All Areas
+Clare,Corofin,All Areas
+Clare,Ennis,All Areas
+Clare,Ennistymon,All Areas
+Clare,Kilkee,All Areas
+Clare,Killaloe,All Areas
+Clare,Kilrush,All Areas
+Clare,Lahinch,All Areas
+Clare,Lisdoonvarna,All Areas
+Clare,Miltown Malbay,All Areas
+Clare,Newmarket-on-Fergus,All Areas
+Clare,Quin,All Areas
+Clare,Scariff,All Areas
+Clare,Shannon,All Areas
+Clare,Sixmilebridge,All Areas
+Clare,Tulla,All Areas
+Cork,Ballincollig,All Areas
+Cork,Bandon,All Areas
+Cork,Bantry,All Areas
+Cork,Blarney,All Areas
+Cork,Carrigaline,All Areas
+Cork,Castletownbere,All Areas
+Cork,Charleville,All Areas
+Cork,Clonakilty,All Areas
+Cork,Cobh,All Areas
+Cork,Cork,All Areas
+Cork,Fermoy,All Areas
+Cork,Glanmire,All Areas
+Cork,Kanturk,All Areas
+Cork,Kinsale,All Areas
+Cork,Macroom,All Areas
+Cork,Mallow,All Areas
+Cork,Midleton,All Areas
+Cork,Millstreet,All Areas
+Cork,Mitchelstown,All Areas
+Cork,Passage West,All Areas
+Cork,Schull,All Areas
+Cork,Skibbereen,All Areas
+Cork,Youghal,All Areas
+Donegal,Ballybofey,All Areas
+Donegal,Ballyshannon,All Areas
+Donegal,Buncrana,All Areas
+Donegal,Bundoran,All Areas
+Donegal,Carndonagh,All Areas
+Donegal,Donegal,All Areas
+Donegal,Dungloe,All Areas
+Donegal,Falcarragh,All Areas
+Donegal,Glenties,All Areas
+Donegal,Gweedore,All Areas
+Donegal,Killybegs,All Areas
+Donegal,Letterkenny,All Areas
+Donegal,Lifford,All Areas
+Donegal,Milford,All Areas
+Donegal,Moville,All Areas
+Donegal,Rathmullan,All Areas
+Donegal,Stranorlar,All Areas
+Down,Ballynahinch,All Areas
+Down,Bangor,All Areas
+Down,Comber,All Areas
+Down,Donaghadee,All Areas
+Down,Downpatrick,All Areas
+Down,Holywood,All Areas
+Down,Newcastle,All Areas
+Down,Newry,All Areas
+Down,Newtownards,All Areas
+Dublin,Baldoyle,All Areas
+Dublin,Ballsbridge,All Areas
+Dublin,Ballymun,All Areas
+Dublin,Blackrock,All Areas
+Dublin,Blanchardstown,All Areas
+Dublin,Blanchardstown,Allendale
+Dublin,Blanchardstown,Beechfield
+Dublin,Blanchardstown,Tyrrelstown
+Dublin,Blanchardstown,Waterville
+Dublin,Cabinteely,All Areas
+Dublin,Cabra,All Areas
+Dublin,Carrickmines,All Areas
+Dublin,Castleknock,All Areas
+Dublin,Chapelizod,All Areas
+Dublin,Clondalkin,All Areas
+Dublin,Clonsilla,All Areas
+Dublin,Dalkey,All Areas
+Dublin,Deansgrange,All Areas
+Dublin,Donaghmede,All Areas
+Dublin,Donnybrook,All Areas
+Dublin,Drumcondra,All Areas
+Dublin,Dublin,All Areas
+Dublin,Dublin 1,Ballybough
+Dublin,Dublin 1,Mountjoy
+Dublin,Dublin 1,North Inner City
+Dublin,Dublin 10,Ballyfermot
+Dublin,Dublin 10,Cherry Orchard
+Dublin,Dublin 11,Ballymun
+Dublin,Dublin 11,Finglas
+Dublin,Dublin 12,Crumlin
+Dublin,Dublin 12,Drimnagh
+Dublin,Dublin 12,Walkinstown
+Dublin,Dublin 13,Baldoyle
+Dublin,Dublin 13,Donaghmede
+Dublin,Dublin 13,Howth
+Dublin,Dublin 14,Churchtown
+Dublin,Dublin 14,Dundrum
+Dublin,Dublin 14,Rathfarnham
+Dublin,Dublin 15,Blanchardstown
+Dublin,Dublin 15,Carpenterstown
+Dublin,Dublin 15,Castleknock
+Dublin,Dublin 15,Clonsilla
+Dublin,Dublin 15,Corduff
+Dublin,Dublin 15,Mulhuddart
+Dublin,Dublin 15,Ongar
+Dublin,Dublin 16,Ballinteer
+Dublin,Dublin 16,Knocklyon
+Dublin,Dublin 16,Sandyford
+Dublin,Dublin 17,Darndale
+Dublin,Dublin 17,Priorswood
+Dublin,Dublin 18,Cabinteely
+Dublin,Dublin 18,Carrickmines
+Dublin,Dublin 18,Foxrock
+Dublin,Dublin 18,Leopardstown
+Dublin,Dublin 18,Sandyford
+Dublin,Dublin 18,Stepaside
+Dublin,Dublin 2,Grand Canal Dock
+Dublin,Dublin 2,South Inner City
+Dublin,Dublin 2,Temple Bar
+Dublin,Dublin 20,Chapelizod
+Dublin,Dublin 20,Palmerstown
+Dublin,Dublin 22,Clondalkin
+Dublin,Dublin 22,Liffey Valley
+Dublin,Dublin 22,Neilstown
+Dublin,Dublin 22,Rowlagh
+Dublin,Dublin 24,Citywest
+Dublin,Dublin 24,Firhouse
+Dublin,Dublin 24,Jobstown
+Dublin,Dublin 24,Kilnamanagh
+Dublin,Dublin 24,Old Bawn
+Dublin,Dublin 24,Tallaght
+Dublin,Dublin 3,Clonliffe
+Dublin,Dublin 3,Clontarf
+Dublin,Dublin 3,Fairview
+Dublin,Dublin 3,Marino
+Dublin,Dublin 4,Ballsbridge
+Dublin,Dublin 4,Donnybrook
+Dublin,Dublin 4,Irishtown
+Dublin,Dublin 4,Ringsend
+Dublin,Dublin 4,Sandymount
+Dublin,Dublin 5,Harmonstown
+Dublin,Dublin 5,Kilbarrack
+Dublin,Dublin 5,Raheny
+Dublin,Dublin 6,Dartry
+Dublin,Dublin 6,Ranelagh
+Dublin,Dublin 6,Rathmines
+Dublin,Dublin 6W,Kimmage
+Dublin,Dublin 6W,Terenure
+Dublin,Dublin 7,Cabra
+Dublin,Dublin 7,Phibsborough
+Dublin,Dublin 7,Stoneybatter
+Dublin,Dublin 8,Inchicore
+Dublin,Dublin 8,Portobello
+Dublin,Dublin 8,Rialto
+Dublin,Dublin 8,South Circular Road
+Dublin,Dublin 8,The Coombe
+Dublin,Dublin 9,Drumcondra
+Dublin,Dublin 9,Glasnevin
+Dublin,Dublin 9,Whitehall
+Dublin,Dún Laoghaire,All Areas
+Dublin,Dún Laoghaire,Glasthule
+Dublin,Dún Laoghaire,Monkstown
+Dublin,Dún Laoghaire,Salthill
+Dublin,Dún Laoghaire,Sandycove
+Dublin,Finglas,All Areas
+Dublin,Foxrock,All Areas
+Dublin,Glenageary,All Areas
+Dublin,Howth,All Areas
+Dublin,Irishtown,All Areas
+Dublin,Killiney,All Areas
+Dublin,Leopardstown,All Areas
+Dublin,Lucan,All Areas
+Dublin,Lucan,Esker Hills
+Dublin,Lucan,Finnstown
+Dublin,Lucan,Griffeen
+Dublin,Lucan,Hillcrest
+Dublin,Lucan,Weston
+Dublin,Malahide,All Areas
+Dublin,Monkstown,All Areas
+Dublin,Palmerstown,All Areas
+Dublin,Phibsborough,All Areas
+Dublin,Portmarnock,All Areas
+Dublin,Ranelagh,All Areas
+Dublin,Rathmines,All Areas
+Dublin,Ringsend,All Areas
+Dublin,Sallynoggin,All Areas
+Dublin,Sandyford,All Areas
+Dublin,Sandymount,All Areas
+Dublin,Santry,All Areas
+Dublin,Shankill,All Areas
+Dublin,Stepaside,All Areas
+Dublin,Stillorgan,All Areas
+Dublin,Swords,All Areas
+Dublin,Swords,Applewood
+Dublin,Swords,Boroimhe
+Dublin,Swords,Ridgewood
+Dublin,Tallaght,All Areas
+Dublin,Templeogue,All Areas
+Dublin,Terenure,All Areas
+Fermanagh,Belcoo,All Areas
+Fermanagh,Belleek,All Areas
+Fermanagh,Enniskillen,All Areas
+Fermanagh,Irvinestown,All Areas
+Fermanagh,Kinawley,All Areas
+Fermanagh,Lisnaskea,All Areas
+Galway,Athenry,All Areas
+Galway,Ballinasloe,All Areas
+Galway,Claregalway,All Areas
+Galway,Clifden,All Areas
+Galway,Galway,All Areas
+Galway,Gort,All Areas
+Galway,Headford,All Areas
+Galway,Kinvara,All Areas
+Galway,Loughrea,All Areas
+Galway,Oranmore,All Areas
+Galway,Oughterard,All Areas
+Galway,Portumna,All Areas
+Galway,Tuam,All Areas
+Kerry,Ballybunion,All Areas
+Kerry,Cahersiveen,All Areas
+Kerry,Castleisland,All Areas
+Kerry,Dingle (An Daingean),All Areas
+Kerry,Kenmare,All Areas
+Kerry,Killarney,All Areas
+Kerry,Killorglin,All Areas
+Kerry,Listowel,All Areas
+Kerry,Sneem,All Areas
+Kerry,Tarbert,All Areas
+Kerry,Tralee,All Areas
+Kildare,Allenwood,All Areas
+Kildare,Athy,All Areas
+Kildare,Athy,Bellview
+Kildare,Athy,Chanterlands
+Kildare,Athy,Coneyboro
+Kildare,Athy,Pairc Bhride
+Kildare,Athy,Rheban Manor
+Kildare,Castledermot,All Areas
+Kildare,Celbridge,Abbey Farm
+Kildare,Celbridge,Aghards
+Kildare,Celbridge,All Areas
+Kildare,Celbridge,Beatty Park
+Kildare,Celbridge,Castletown
+Kildare,Celbridge,Chelmsford
+Kildare,Celbridge,Crodaun Forest Park
+Kildare,Celbridge,Hazelhatch Park
+Kildare,Celbridge,Oldtown Mill
+Kildare,Celbridge,Primrose Gate
+Kildare,Celbridge,Simmonstown Manor
+Kildare,Celbridge,St Raphael's Manor
+Kildare,Celbridge,Temple Manor
+Kildare,Celbridge,The Grove
+Kildare,Celbridge,Thornhill Meadows
+Kildare,Celbridge,Vanessa Lawns
+Kildare,Celbridge,Willowbrook
+Kildare,Clane,All Areas
+Kildare,Johnstown,All Areas
+Kildare,Kilcock,All Areas
+Kildare,Kilcullen,All Areas
+Kildare,Kildare,All Areas
+Kildare,Leixlip,All Areas
+Kildare,Leixlip,Castletown
+Kildare,Leixlip,Glen Easton
+Kildare,Leixlip,Glendale
+Kildare,Leixlip,Louisa Valley
+Kildare,Leixlip,Newtown Park
+Kildare,Leixlip,Oaklawn
+Kildare,Leixlip,Rinawade
+Kildare,Leixlip,Riverforest
+Kildare,Leixlip,Ryevale Lawns
+Kildare,Maynooth,All Areas
+Kildare,Maynooth,Beaufield
+Kildare,Maynooth,Carton Court
+Kildare,Maynooth,College Green
+Kildare,Maynooth,Greenfield
+Kildare,Maynooth,Laraghbryan
+Kildare,Maynooth,Mariaville
+Kildare,Maynooth,Meadowbrook
+Kildare,Maynooth,Old Greenfield
+Kildare,Maynooth,Parklands
+Kildare,Maynooth,Railpark
+Kildare,Monasterevin,All Areas
+Kildare,Naas,All Areas
+Kildare,Naas,Aylmer Park
+Kildare,Naas,Caragh Court
+Kildare,Naas,Jigginstown Park
+Kildare,Naas,Kingsfurze
+Kildare,Naas,Lacken View
+Kildare,Naas,Maudlins
+Kildare,Naas,Monread
+Kildare,Naas,Morell Manor
+Kildare,Naas,Oakfield
+Kildare,Naas,Oldtown Demesne
+Kildare,Naas,Pipers Hill
+Kildare,Naas,The Gallops
+Kildare,Newbridge,All Areas
+Kildare,Newbridge,Barretstown Meadows
+Kildare,Newbridge,College Farm
+Kildare,Newbridge,Curragh Grange
+Kildare,Newbridge,Great Connell
+Kildare,Newbridge,Moorefield Park
+Kildare,Newbridge,Pollardstown
+Kildare,Newbridge,Roseberry
+Kildare,Newbridge,The Meadows
+Kildare,Prosperous,All Areas
+Kildare,Rathangan,All Areas
+Kildare,Sallins,All Areas
+Kildare,Straffan,All Areas
+Kilkenny,Bennettsbridge,All Areas
+Kilkenny,Callan,All Areas
+Kilkenny,Castlecomer,All Areas
+Kilkenny,Freshford,All Areas
+Kilkenny,Graiguenamanagh,All Areas
+Kilkenny,Kilkenny,All Areas
+Kilkenny,Mooncoin,All Areas
+Kilkenny,Piltown,All Areas
+Kilkenny,Thomastown,All Areas
+Kilkenny,Urlingford,All Areas
+Laois,Abbeyleix,All Areas
+Laois,Ballylinan,All Areas
+Laois,Durrow,All Areas
+Laois,Emo,All Areas
+Laois,Mountmellick,All Areas
+Laois,Mountrath,All Areas
+Laois,Portarlington,All Areas
+Laois,Portlaoise,All Areas
+Laois,Rathdowney,All Areas
+Laois,Stradbally,All Areas
+Leitrim,Ballinamore,All Areas
+Leitrim,Carrick-on-Shannon,All Areas
+Leitrim,Dromahair,All Areas
+Leitrim,Drumshanbo,All Areas
+Leitrim,Kinlough,All Areas
+Leitrim,Manorhamilton,All Areas
+Leitrim,Mohill,All Areas
+Limerick,Abbeyfeale,All Areas
+Limerick,Adare,All Areas
+Limerick,Askeaton,All Areas
+Limerick,Caherconlish,All Areas
+Limerick,Castleconnell,All Areas
+Limerick,Kilmallock,All Areas
+Limerick,Limerick,All Areas
+Limerick,Newcastle West,All Areas
+Limerick,Patrickswell,All Areas
+Limerick,Rathkeale,All Areas
+Londonderry,Coleraine,All Areas
+Londonderry,Derry,All Areas
+Londonderry,Limavady,All Areas
+Londonderry,Maghera,All Areas
+Londonderry,Magherafelt,All Areas
+Londonderry,Portstewart,All Areas
+Longford,Ballymahon,All Areas
+Longford,Edgeworthstown,All Areas
+Longford,Granard,All Areas
+Longford,Lanesborough,All Areas
+Longford,Longford,All Areas
+Longford,Newtownforbes,All Areas
+Louth,Ardee,All Areas
+Louth,Carlingford,All Areas
+Louth,Clogherhead,All Areas
+Louth,Drogheda,All Areas
+Louth,Dundalk,All Areas
+Louth,Dunleer,All Areas
+Louth,Termonfeckin,All Areas
+Mayo,Ballina,All Areas
+Mayo,Ballinrobe,All Areas
+Mayo,Ballyhaunis,All Areas
+Mayo,Belmullet,All Areas
+Mayo,Castlebar,All Areas
+Mayo,Claremorris,All Areas
+Mayo,Crossmolina,All Areas
+Mayo,Foxford,All Areas
+Mayo,Knock,All Areas
+Mayo,Swinford,All Areas
+Mayo,Westport,All Areas
+Meath,Ashbourne,All Areas
+Meath,Athboy,All Areas
+Meath,Dunboyne,All Areas
+Meath,Dunshaughlin,All Areas
+Meath,Enfield,All Areas
+Meath,Kells,All Areas
+Meath,Laytown-Bettystown,All Areas
+Meath,Navan,All Areas
+Meath,Oldcastle,All Areas
+Meath,Ratoath,All Areas
+Meath,Slane,All Areas
+Meath,Trim,All Areas
+Monaghan,Ballybay,All Areas
+Monaghan,Carrickmacross,All Areas
+Monaghan,Castleblayney,All Areas
+Monaghan,Clones,All Areas
+Monaghan,Emyvale,All Areas
+Monaghan,Monaghan,All Areas
+Offaly,Banagher,All Areas
+Offaly,Birr,All Areas
+Offaly,Clara,All Areas
+Offaly,Edenderry,All Areas
+Offaly,Ferbane,All Areas
+Offaly,Shannonbridge,All Areas
+Offaly,Tullamore,All Areas
+Roscommon,Ballaghaderreen,All Areas
+Roscommon,Boyle,All Areas
+Roscommon,Castlerea,All Areas
+Roscommon,Elphin,All Areas
+Roscommon,Monksland,All Areas
+Roscommon,Roscommon,All Areas
+Roscommon,Strokestown,All Areas
+Sligo,Ballymote,All Areas
+Sligo,Collooney,All Areas
+Sligo,Enniscrone,All Areas
+Sligo,Grange,All Areas
+Sligo,Sligo,All Areas
+Sligo,Strandhill,All Areas
+Sligo,Tubbercurry,All Areas
+Tipperary,Borrisokane,All Areas
+Tipperary,Cahir,All Areas
+Tipperary,Carrick-on-Suir,All Areas
+Tipperary,Cashel,All Areas
+Tipperary,Clonmel,All Areas
+Tipperary,Nenagh,All Areas
+Tipperary,Newport,All Areas
+Tipperary,Roscrea,All Areas
+Tipperary,Templemore,All Areas
+Tipperary,Thurles,All Areas
+Tipperary,Tipperary,All Areas
+Tyrone,Coalisland,All Areas
+Tyrone,Cookstown,All Areas
+Tyrone,Dungannon,All Areas
+Tyrone,Fintona,All Areas
+Tyrone,Omagh,All Areas
+Tyrone,Stewartstown,All Areas
+Tyrone,Strabane,All Areas
+Waterford,Ardmore,All Areas
+Waterford,Cappoquin,All Areas
+Waterford,Dungarvan,All Areas
+Waterford,Kilmacthomas,All Areas
+Waterford,Lismore,All Areas
+Waterford,Portlaw,All Areas
+Waterford,Tramore,All Areas
+Waterford,Waterford,All Areas
+Westmeath,Athlone,All Areas
+Westmeath,Castlepollard,All Areas
+Westmeath,Kilbeggan,All Areas
+Westmeath,Kinnegad,All Areas
+Westmeath,Moate,All Areas
+Westmeath,Mullingar,All Areas
+Westmeath,Rochfortbridge,All Areas
+Wexford,Bunclody,All Areas
+Wexford,Courtown,All Areas
+Wexford,Enniscorthy,All Areas
+Wexford,Ferns,All Areas
+Wexford,Gorey,All Areas
+Wexford,New Ross,All Areas
+Wexford,Rosslare Harbour,All Areas
+Wexford,Wexford,All Areas
+Wicklow,Arklow,All Areas
+Wicklow,Baltinglass,All Areas
+Wicklow,Blessington,All Areas
+Wicklow,Bray,All Areas
+Wicklow,Enniskerry,All Areas
+Wicklow,Greystones,All Areas
+Wicklow,Newtownmountkennedy,All Areas
+Wicklow,Rathdrum,All Areas
+Wicklow,Tinahely,All Areas
+Wicklow,Wicklow,All Areas
