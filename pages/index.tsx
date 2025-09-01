@@ -5,7 +5,7 @@ const CascadingSearch = dynamic(() => import("../components/CascadingSearch"), {
 
 function csvToDataShape(text: string) {
   const lines = text.trim().split(/\r?\n/);
-  lines.shift(); // header
+  lines.shift(); // header: county,town,estate
   const data: Record<string, Record<string, string[]>> = {};
   for (const line of lines) {
     const [countyRaw, townRaw, estateRaw] = line.split(",");
@@ -33,7 +33,7 @@ export default function Home() {
   return (
     <CascadingSearch
       fetchData={fetchData}
-      onNavigate={(path) => router.push(path)} // enables /county/town/estate URLs
+      onNavigate={(path) => router.push(path)} // enables /county/town/estate
     />
   );
 }
