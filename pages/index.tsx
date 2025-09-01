@@ -3,6 +3,8 @@ import { useRouter } from "next/router";
 
 const CascadingSearch = dynamic(() => import("../components/CascadingSearch"), { ssr: false });
 
+type DataShape = Record<string, Record<string, string[]>>;
+
 // ---------- CSV helpers (supports quoted commas) ----------
 function splitCSVLine(line: string): string[] {
   const cells = line.match(/("([^"]|"")*"|[^,]+)/g) || [];
@@ -13,7 +15,7 @@ function splitCSVLine(line: string): string[] {
   });
 }
 
-function parseSimpleCSV(text: string) {
+function parseSimpleCSV(text: string): DataShape {
   text = text.replace(/^\uFEFF/, "");
   const lines = text.trim().split(/\r?\n/);
   const header = lines.shift(); if (!header) return {};
@@ -21,7 +23,7 @@ function parseSimpleCSV(text: string) {
   const iCounty = cols.indexOf("county");
   const iTown = cols.indexOf("town");
   const iEstate = cols.indexOf("estate");
-  const data: Record<string, Record<string, string[]>> = {};
+  const data: DataShape = {};
   for (const line of lines) {
     if (!line) continue;
     const parts = splitCSVLine(line);
@@ -37,13 +39,12 @@ function parseSimpleCSV(text: string) {
 }
 
 // Try to find reasonable columns in CSO file no matter the header wording
-function parseCsoBUA(text: string) {
+function parseCsoBUA(text: string): DataShape {
   text = text.replace(/^\uFEFF/, "");
   const lines = text.trim().split(/\r?\n/);
   const header = lines.shift(); if (!header) return {};
   const headers = splitCSVLine(header).map((h) => h.trim());
 
-  // Robust header matching
   const findCol = (patterns: RegExp[]) =>
     headers.findIndex((h) => patterns.some((p) => p.test(h)));
 
@@ -54,16 +55,16 @@ function parseCsoBUA(text: string) {
     /^TOWN[_ ]?NAME$/i,
     /^SETTLEMENT[_ ]?NAME$/i,
     /URBAN[_ ]?AREA/i,
-    /^NAME$/i
+    /^NAME$/i,
   ]);
 
-  // County column: COUNTY, COUNTY_NAME, COUNTY OR CITY, LOCAL AUTHORITY
+  // County column: COUNTY, COUNTY_NAME, COUNTY OR CITY, LOCAL AUTHORITY, LA_NAME
   const idxCounty = findCol([
     /^COUNTY$/i,
     /^COUNTY[_ ]?NAME$/i,
     /^COUNTY[_ ]?OR[_ ]?CITY$/i,
     /^LOCAL[_ ]?AUTHORITY$/i,
-    /^LA[_ ]?NAME$/i
+    /^LA[_ ]?NAME$/i,
   ]);
 
   if (idxName < 0 || idxCounty < 0) {
@@ -71,7 +72,7 @@ function parseCsoBUA(text: string) {
     return {};
   }
 
-  const data: Record<string, Record<string, string[]>> = {};
+  const data: DataShape = {};
   for (const line of lines) {
     if (!line) continue;
     const parts = splitCSVLine(line);
@@ -85,8 +86,8 @@ function parseCsoBUA(text: string) {
   return data;
 }
 
-function mergeData(a: any, b: any) {
-  const out: Record<string, Record<string, string[]>> = JSON.parse(JSON.stringify(a || {}));
+function mergeData(a: DataShape, b: DataShape): DataShape {
+  const out: DataShape = JSON.parse(JSON.stringify(a || {}));
   for (const [county, towns] of Object.entries(b || {})) {
     out[county] ||= {};
     for (const [town, estates] of Object.entries(towns as Record<string, string[]>)) {
@@ -97,6 +98,7 @@ function mergeData(a: any, b: any) {
   return out;
 }
 
+// Try multiple file paths (handles .csv.csv etc.)
 async function tryFetch(paths: string[]) {
   for (const p of paths) {
     try {
@@ -112,30 +114,36 @@ export default function Home() {
 
   const fetchData = async () => {
     // 1) CSO towns/urban areas (Republic) — try common filenames
-    let csoData: any = {};
+    let csoData: DataShape = {};
     const csoTxt = await tryFetch([
       "/data/cso_bua_2022.csv",
       "/data/cso_bua_2022.csv.csv",
       "/data/SAPS_2022_BUA_270923.csv",
-      "/data/SAPS_2022_BUA_270923.csv.csv"
+      "/data/SAPS_2022_BUA_270923.csv.csv",
     ]);
     if (csoTxt) {
       csoData = parseCsoBUA(csoTxt);
-      const csoTownCount = Object.values(csoData).reduce((a, t: any) => a + Object.keys(t).length, 0);
+      const csoTownCount = Object.values(csoData).reduce(
+        (a: number, t: Record<string, string[]>) => a + Object.keys(t).length,
+        0
+      );
       console.log("[IER] CSO towns loaded:", csoTownCount);
     } else {
       console.warn("[IER] Could not fetch CSO file (check filename under public/data/)");
     }
 
     // 2) Your custom CSV (NI + any estates)
-    let customData: any = {};
+    let customData: DataShape = {};
     const customTxt = await tryFetch(["/data/estates.csv"]);
     if (customTxt) customData = parseSimpleCSV(customTxt);
 
     const merged = mergeData(csoData, customData);
 
     const countyCount = Object.keys(merged).length;
-    const townCount = Object.values(merged).reduce((acc, t: any) => acc + Object.keys(t).length, 0);
+    const townCount = Object.values(merged).reduce(
+      (acc: number, t: Record<string, string[]>) => acc + Object.keys(t).length,
+      0
+    );
     console.log("[IER] Loaded", countyCount, "counties,", townCount, "towns");
 
     return merged;
