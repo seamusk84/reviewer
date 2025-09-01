@@ -3,24 +3,20 @@ import { useRouter } from "next/router";
 
 const CascadingSearch = dynamic(() => import("../components/CascadingSearch"), { ssr: false });
 
-// --- small CSV helper: splits commas outside quotes and unquotes cells
+// --- CSV helpers (handles quoted commas)
 function splitCSVLine(line: string): string[] {
   const cells = line.match(/("([^"]|"")*"|[^,]+)/g) || [];
   return cells.map((c) => {
     let s = c.trim();
-    if (s.startsWith('"') && s.endsWith('"')) {
-      s = s.slice(1, -1).replace(/""/g, '"');
-    }
+    if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1).replace(/""/g, '"');
     return s;
   });
 }
 
-// Parse our simple CSV (county,town,estate)
 function parseSimpleCSV(text: string) {
-  text = text.replace(/^\uFEFF/, ""); // strip BOM
+  text = text.replace(/^\uFEFF/, "");
   const lines = text.trim().split(/\r?\n/);
-  const header = lines.shift();
-  if (!header) return {};
+  const header = lines.shift(); if (!header) return {};
   const cols = splitCSVLine(header).map((h) => h.trim().toLowerCase());
   const iCounty = cols.indexOf("county");
   const iTown = cols.indexOf("town");
@@ -33,30 +29,22 @@ function parseSimpleCSV(text: string) {
     const town = parts[iTown]?.trim();
     const estate = (parts[iEstate]?.trim() || "All Areas");
     if (!county || !town) continue;
-    data[county] = data[county] || {};
-    data[county][town] = data[county][town] || [];
+    (data[county] ||= {});
+    (data[county][town] ||= []);
     if (!data[county][town].includes(estate)) data[county][town].push(estate);
   }
   return data;
 }
 
-// Parse CSO BUA CSV (tolerant to header naming + quotes)
 function parseCsoBUA(text: string) {
-  text = text.replace(/^\uFEFF/, ""); // strip BOM
+  text = text.replace(/^\uFEFF/, "");
   const lines = text.trim().split(/\r?\n/);
-  const header = lines.shift();
-  if (!header) return {};
+  const header = lines.shift(); if (!header) return {};
   const headers = splitCSVLine(header).map((h) => h.trim());
-  const find = (patterns: RegExp[]) =>
-    headers.findIndex((h) => patterns.some((p) => p.test(h)));
-
-  // CSO variants seen: URBAN_AREA_NAME, BUA_NAME, URBAN AREA NAME, NAME
+  const find = (pats: RegExp[]) => headers.findIndex((h) => pats.some((p) => p.test(h)));
   const idxName = find([/URBAN[_ ]?AREA[_ ]?NAME/i, /BUA[_ ]?NAME/i, /URBAN[_ ]?AREA/i, /^NAME$/i]);
-  // COUNTY or COUNTY_NAME
   const idxCounty = find([/^COUNTY$/i, /^COUNTY[_ ]?NAME$/i]);
-
   if (idxName < 0 || idxCounty < 0) return {};
-
   const data: Record<string, Record<string, string[]>> = {};
   for (const line of lines) {
     if (!line) continue;
@@ -64,59 +52,59 @@ function parseCsoBUA(text: string) {
     const town = (parts[idxName] || "").trim();
     const county = (parts[idxCounty] || "").trim();
     if (!town || !county) continue;
-    data[county] = data[county] || {};
-    data[county][town] = data[county][town] || [];
+    (data[county] ||= {});
+    (data[county][town] ||= []);
     if (!data[county][town].includes("All Areas")) data[county][town].push("All Areas");
   }
   return data;
 }
 
-// Merge two DataShapes (dedupe estates)
 function mergeData(a: any, b: any) {
   const out: Record<string, Record<string, string[]>> = JSON.parse(JSON.stringify(a || {}));
   for (const [county, towns] of Object.entries(b || {})) {
-    out[county] = out[county] || {};
+    out[county] ||= {};
     for (const [town, estates] of Object.entries(towns as Record<string, string[]>)) {
-      out[county][town] = out[county][town] || [];
-      for (const e of estates) {
-        if (!out[county][town].includes(e)) out[county][town].push(e);
-      }
+      out[county][town] ||= [];
+      for (const e of estates) if (!out[county][town].includes(e)) out[county][town].push(e);
     }
   }
   return out;
+}
+
+// Try multiple file paths (handles .csv.csv)
+async function tryFetch(paths: string[]) {
+  for (const p of paths) {
+    try {
+      const r = await fetch(p);
+      if (r.ok) return await r.text();
+    } catch {}
+  }
+  return null;
 }
 
 export default function Home() {
   const router = useRouter();
 
   const fetchData = async () => {
-    // 1) CSO towns/urban areas (Republic)
+    // 1) CSO towns/urban areas (Republic) — try both names
     let csoData: any = {};
-    try {
-      const csoRes = await fetch("/data/cso_bua_2022.csv");
-      if (csoRes.ok) {
-        const txt = await csoRes.text();
-        csoData = parseCsoBUA(txt);
-      }
-    } catch {}
+    const csoTxt = await tryFetch(["/data/cso_bua_2022.csv", "/data/cso_bua_2022.csv.csv"]);
+    if (csoTxt) csoData = parseCsoBUA(csoTxt);
 
-    // 2) Your custom CSV (e.g., Northern Ireland + estates you add)
+    // 2) Your custom CSV (NI + any estates)
     let customData: any = {};
-    try {
-      const customRes = await fetch("/data/estates.csv");
-      if (customRes.ok) {
-        const txt = await customRes.text();
-        customData = parseSimpleCSV(txt);
-      }
-    } catch {}
+    const customTxt = await tryFetch(["/data/estates.csv"]);
+    if (customTxt) customData = parseSimpleCSV(customTxt);
 
-    return mergeData(csoData, customData);
+    const merged = mergeData(csoData, customData);
+
+    // Debug summary in browser console
+    const countyCount = Object.keys(merged).length;
+    const townCount = Object.values(merged).reduce((acc, t) => acc + Object.keys(t).length, 0);
+    console.log("[IER] Loaded", countyCount, "counties,", townCount, "towns");
+
+    return merged;
   };
 
-  return (
-    <CascadingSearch
-      fetchData={fetchData}
-      onNavigate={(path) => router.push(path)}
-    />
-  );
+  return <CascadingSearch fetchData={fetchData} onNavigate={(p) => router.push(p)} />;
 }
