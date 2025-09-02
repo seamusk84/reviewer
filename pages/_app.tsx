@@ -9,7 +9,21 @@ export default function App({ Component, pageProps }: AppProps) {
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Ireland Estate Reviews</title>
+        <meta
+          name="description"
+          content="Unfiltered reviews of estates and areas across Ireland. Search by county, town, and estate."
+        />
         <meta name="theme-color" content="#0b1020" />
+        {/* Open Graph / Twitter */}
+        <meta property="og:title" content="Ireland Estate Reviews" />
+        <meta
+          property="og:description"
+          content="Unfiltered reviews of estates and areas across Ireland."
+        />
+        <meta property="og:image" content="/icon.png" />
+        <meta property="og:type" content="website" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <link rel="icon" href="/favicon.ico" />
       </Head>
 
       <div className="site">
@@ -17,7 +31,7 @@ export default function App({ Component, pageProps }: AppProps) {
           <div className="container inner">
             <a className="brand" href="/">
               <span className="dot" />
-              Ireland Estate Reviews <span style={{opacity:.7,fontWeight:600}}>(DEV THEME)</span>
+              Ireland Estate Reviews
             </a>
             <nav className="nav">
               <a href="/">Search</a>
