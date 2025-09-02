@@ -1,3 +1,4 @@
+// components/CascadingSearch.tsx
 import React from "react";
 
 type DataShape = Record<string, Record<string, string[]>>;
@@ -32,20 +33,19 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
         setLoading(true);
         const d = (await fetchData()) || {};
         setData(d);
-        const cs = Object.keys(d).sort((a, b) => a.localeCompare(b));
-        setCounties(cs);
+        setCounties(Object.keys(d).sort((a, b) => a.localeCompare(b)));
         setMsg(null);
       } catch (e: any) {
         setMsg(e.message || "Failed to load data");
       } finally {
         setLoading(false);
-        // autofocus first input on mount (desktop only, skip on mobile iOS quirks)
-        if (countyRef.current && window.innerWidth > 640) countyRef.current.focus();
+        if (countyRef.current && typeof window !== "undefined" && window.innerWidth > 640) {
+          countyRef.current.focus();
+        }
       }
     })();
   }, [fetchData]);
 
-  // update towns/estates when selections change
   React.useEffect(() => {
     if (!county) { setTowns([]); setTown(""); setEstates([]); setEstate(""); return; }
     const t = Object.keys(data[county] || {}).sort((a,b)=>a.localeCompare(b));
@@ -60,7 +60,6 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
     if (!e.includes(estate)) setEstate(e[0] || "");
   }, [county, town, data]);
 
-  // “closest match” helper for type-to-filter dropdowns
   function closest(list: string[], val: string) {
     if (!val) return "";
     const i = list.findIndex(x => x.toLowerCase().startsWith(val.toLowerCase()));
@@ -74,6 +73,13 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
     const e = estate || "All Areas";
     onNavigate(`/${slugify(county)}/${slugify(town)}/${slugify(e)}`);
   }
+
+  const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      go();
+    }
+  };
 
   async function submitSuggestion(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -101,9 +107,9 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
   return (
     <div className="card">
       <div className="hero">
-        <div className="kicker">Find your estate</div>
-        <h1>Search by <em>County</em>, then <em>Town/Region</em>, then <em>Estate/Area</em></h1>
-        <p>Type to filter each list. If there’s no exact match, we jump to the nearest alphabetical match.</p>
+        <div className="kicker">Find your neighbourhood</div>
+        <h1>Search by County, then Town/Region, then Estate/Area</h1>
+        <p>Type to filter each dropdown. If there’s no exact match, we snap to the nearest alphabetical match.</p>
       </div>
 
       {loading && <p className="kicker">Loading data…</p>}
@@ -119,6 +125,7 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
             placeholder="Start typing a county…"
             value={county}
             onChange={(e)=> setCounty(closest(counties, e.target.value))}
+            onKeyDown={onEnter}
             ref={countyRef}
             autoComplete="off"
             aria-autocomplete="list"
@@ -130,13 +137,14 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
 
         <div>
           <label className="label" htmlFor="town">Town / Region</label>
-          <input
+        <input
             id="town"
             className="input"
             list="towns"
             placeholder={county ? "Start typing a town…" : "Pick a county first"}
             value={town}
             onChange={(e)=> setTown(closest(towns, e.target.value))}
+            onKeyDown={onEnter}
             disabled={!county}
             autoComplete="off"
             aria-autocomplete="list"
@@ -155,6 +163,7 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
             placeholder={town ? "Type or choose an estate…" : "Pick a town first"}
             value={estate}
             onChange={(e)=> setEstate(closest(estates, e.target.value))}
+            onKeyDown={onEnter}
             disabled={!town}
             autoComplete="off"
             aria-autocomplete="list"
@@ -207,5 +216,7 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
         Admin quick tools: <a href="/data/estates.csv" style={{color:"var(--brand)"}}>download current CSV</a>
       </p>
     </div>
+  );
+}
   );
 }
