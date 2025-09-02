@@ -1,14 +1,12 @@
-// next.config.mjs
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
 
-  // Don’t fail the production build on lint or TS while we iterate quickly.
+  // Keep builds green while we’re iterating fast.
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
 
-  // (optional) If you use images later
-  images: { formats: ['image/avif', 'image/webp'] },
+  images: { formats: ['image/avif', 'image/webp'] }
 };
 
 export default nextConfig;
