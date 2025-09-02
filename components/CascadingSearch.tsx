@@ -1,5 +1,11 @@
 // components/CascadingSearch.tsx
-import React, { useEffect, useRef, useState, KeyboardEvent, FormEvent } from "react";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  KeyboardEvent,
+  FormEvent,
+} from "react";
 
 type DataShape = Record<string, Record<string, string[]>>;
 type Props = {
@@ -48,27 +54,19 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
 
   useEffect(() => {
     if (!county) {
-      setTowns([]);
-      setTown("");
-      setEstates([]);
-      setEstate("");
+      setTowns([]); setTown("");
+      setEstates([]); setEstate("");
       return;
     }
     const t = Object.keys(data[county] || {}).sort((a, b) => a.localeCompare(b));
     setTowns(t);
     if (!t.includes(town)) {
-      setTown("");
-      setEstates([]);
-      setEstate("");
+      setTown(""); setEstates([]); setEstate("");
     }
   }, [county, data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!county || !town) {
-      setEstates([]);
-      setEstate("");
-      return;
-    }
+    if (!county || !town) { setEstates([]); setEstate(""); return; }
     const e = [...(data[county]?.[town] || [])].sort((a, b) => a.localeCompare(b));
     setEstates(e);
     if (!e.includes(estate)) setEstate(e[0] || "");
@@ -123,24 +121,15 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
       <div className="hero">
         <div className="kicker">Find your neighbourhood</div>
         <h1>Search by County, then Town/Region, then Estate/Area</h1>
-        <p>
-          Type to filter each dropdown. If there’s no exact match, we snap to the nearest
-          alphabetical match.
-        </p>
+        <p>Type to filter each list. If there’s no exact match, we snap to the nearest alphabetical match.</p>
       </div>
 
       {loading && <p className="kicker">Loading data…</p>}
-      {msg && (
-        <p className="kicker" style={{ color: "#ffbdbd" }}>
-          {msg}
-        </p>
-      )}
+      {msg && <p className="kicker" style={{ color: "#ffbdbd" }}>{msg}</p>}
 
       <div className="grid grid-3" style={{ marginTop: 12 }}>
         <div>
-          <label className="label" htmlFor="county">
-            County
-          </label>
+          <label className="label" htmlFor="county">County</label>
           <input
             id="county"
             className="input"
@@ -154,16 +143,12 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
             aria-autocomplete="list"
           />
           <datalist id="counties">
-            {counties.map((c) => (
-              <option key={c} value={c} />
-            ))}
+            {counties.map((c) => <option key={c} value={c} />)}
           </datalist>
         </div>
 
         <div>
-          <label className="label" htmlFor="town">
-            Town / Region
-          </label>
+          <label className="label" htmlFor="town">Town / Region</label>
           <input
             id="town"
             className="input"
@@ -177,16 +162,12 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
             aria-autocomplete="list"
           />
           <datalist id="towns">
-            {towns.map((t) => (
-              <option key={t} value={t} />
-            ))}
+            {towns.map((t) => <option key={t} value={t} />)}
           </datalist>
         </div>
 
         <div>
-          <label className="label" htmlFor="estate">
-            Estate / Area
-          </label>
+          <label className="label" htmlFor="estate">Estate / Area</label>
           <input
             id="estate"
             className="input"
@@ -200,85 +181,40 @@ export default function CascadingSearch({ fetchData, onNavigate }: Props) {
             aria-autocomplete="list"
           />
           <datalist id="estates">
-            {estates.map((e) => (
-              <option key={e} value={e} />
-            ))}
+            {estates.map((e) => <option key={e} value={e} />)}
           </datalist>
         </div>
       </div>
 
       <div className="row" style={{ marginTop: 14 }}>
-        <button className="button" onClick={go} disabled={!county || !town}>
-          Go to estate page
-        </button>
-        <button
-          className="button secondary"
-          onClick={() => {
-            setCounty("");
-            setTown("");
-            setEstate("");
-          }}
-        >
-          Clear
-        </button>
-        <button className="button secondary" onClick={() => setShowAdd((s) => !s)}>
-          Don’t see yours?
-        </button>
+        <button className="button" onClick={go} disabled={!county || !town}>Go to estate page</button>
+        <button className="button secondary" onClick={() => { setCounty(""); setTown(""); setEstate(""); }}>Clear</button>
+        <button className="button secondary" onClick={() => setShowAdd((s) => !s)}>Don’t see yours?</button>
       </div>
 
       {showAdd && (
         <form onSubmit={submitSuggestion} className="card" style={{ marginTop: 16 }}>
           <div className="grid grid-2">
-            <div>
-              <div className="label">County</div>
-              <input name="county" className="input" defaultValue={county} required />
-            </div>
-            <div>
-              <div className="label">Town / Region</div>
-              <input name="town" className="input" defaultValue={town} required />
-            </div>
-            <div>
-              <div className="label">Estate / Area</div>
-              <input name="estate" className="input" defaultValue={estate} required />
-            </div>
-            <div>
-              <div className="label">Email (optional – for follow-up)</div>
-              <input name="email" className="input" type="email" placeholder="you@example.com" />
-            </div>
+            <div><div className="label">County</div><input name="county" className="input" defaultValue={county} required /></div>
+            <div><div className="label">Town / Region</div><input name="town" className="input" defaultValue={town} required /></div>
+            <div><div className="label">Estate / Area</div><input name="estate" className="input" defaultValue={estate} required /></div>
+            <div><div className="label">Email (optional)</div><input name="email" className="input" type="email" placeholder="you@example.com" /></div>
           </div>
           <div style={{ marginTop: 12 }}>
             <div className="label">Notes (optional)</div>
-            <textarea
-              name="note"
-              className="input"
-              rows={4}
-              placeholder="Anything we should know?"
-            ></textarea>
+            <textarea name="note" className="input" rows={4} placeholder="Anything we should know?"></textarea>
           </div>
           <div className="row" style={{ marginTop: 12 }}>
             <button className="button">Submit suggestion</button>
-            <button
-              type="button"
-              className="button secondary"
-              onClick={() => setShowAdd(false)}
-            >
-              Cancel
-            </button>
+            <button type="button" className="button secondary" onClick={() => setShowAdd(false)}>Cancel</button>
           </div>
-          <p className="small" style={{ marginTop: 8 }}>
-            We only use your email to follow up on your suggestion if needed.
-          </p>
+          <p className="small" style={{ marginTop: 8 }}>We only use your email to follow up if needed.</p>
         </form>
       )}
 
       <p className="small" style={{ marginTop: 14 }}>
-        Admin quick tools:{" "}
-        <a href="/data/estates.csv" style={{ color: "var(--brand)" }}>
-          download current CSV
-        </a>
+        Admin quick tools: <a href="/data/estates.csv" style={{ color: "var(--brand)" }}>download current CSV</a>
       </p>
     </div>
-  );
-}
   );
 }
