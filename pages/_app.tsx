@@ -1,3 +1,4 @@
+// pages/_app.tsx
 import type { AppProps } from "next/app";
 import Head from "next/head";
 import "../styles/globals.css";
@@ -14,7 +15,10 @@ export default function App({ Component, pageProps }: AppProps) {
       <div className="site">
         <header className="site-header">
           <div className="container inner">
-            <a className="brand" href="/"><span className="dot" /> Ireland Estate Reviews</a>
+            <a className="brand" href="/">
+              <span className="dot" />
+              Ireland Estate Reviews <span style={{opacity:.7,fontWeight:600}}>(DEV THEME)</span>
+            </a>
             <nav className="nav">
               <a href="/">Search</a>
               <a href="mailto:hello@example.com">Contact</a>
