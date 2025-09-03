@@ -20,6 +20,7 @@ const slug = (s: string) =>
 
 export default function Moderate() {
   const [token, setToken] = React.useState("");
+  const [status, setStatus] = React.useState<"pending" | "approved" | "rejected">("pending");
   const [reviews, setReviews] = React.useState<Review[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -33,7 +34,7 @@ export default function Moderate() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch("/api/moderation?status=pending", {
+      const res = await fetch(`/api/moderation?status=${status}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -46,9 +47,12 @@ export default function Moderate() {
     }
   }
 
-  async function act(id: string, action: "approve" | "reject") {
+  async function act(id: string, action: "approve" | "reject" | "delete") {
+    if (action === "delete" && !confirm("Delete this review permanently? This cannot be undone.")) {
+      return;
+    }
     const prev = reviews;
-    setReviews((r) => r.filter((x) => x.id !== id)); // optimistic remove
+    setReviews((r) => r.filter((x) => x.id !== id)); // optimistic removal
     try {
       const res = await fetch("/api/moderation", {
         method: "POST",
@@ -62,7 +66,7 @@ export default function Moderate() {
       if (!json.ok) throw new Error(json.error || "Action failed");
     } catch (e: any) {
       setError(e.message);
-      setReviews(prev); // rollback
+      setReviews(prev); // rollback on error
     }
   }
 
@@ -70,11 +74,11 @@ export default function Moderate() {
     <div style={{ maxWidth: 1000, margin: "32px auto", padding: "0 16px" }}>
       <h1>Moderator</h1>
       <p className="small">
-        Enter the moderator password, then load pending reviews. Admin actions
-        run on the server with a service key.
+        Enter the moderator password, choose a status filter, then load reviews.
+        Admin actions run on the server with a service key.
       </p>
 
-      <div className="card" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <div className="card" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input
           className="input"
           type="password"
@@ -86,9 +90,23 @@ export default function Moderate() {
           }}
           style={{ maxWidth: 260 }}
         />
+
+        <select
+          className="input"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as any)}
+          style={{ maxWidth: 180 }}
+          aria-label="Status filter"
+        >
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+
         <button className="button" onClick={load} disabled={!token || loading}>
-          {loading ? "Loading…" : "Load pending"}
+          {loading ? "Loading…" : "Load"}
         </button>
+
         {error && (
           <span className="small" style={{ color: "#ffbdbd", marginLeft: 8 }}>
             {error}
@@ -123,13 +141,14 @@ export default function Moderate() {
             <p className="small" style={{ color: "#9db0ff" }}>
               By {r.name || "Anonymous"} {r.email ? `• ${r.email}` : ""}
             </p>
-            <div className="row" style={{ marginTop: 8 }}>
+            <div className="row" style={{ marginTop: 8, gap: 8 }}>
               <button className="button" onClick={() => act(r.id, "approve")}>Approve</button>
               <button className="button secondary" onClick={() => act(r.id, "reject")}>Reject</button>
+              <button className="button danger" onClick={() => act(r.id, "delete")}>Delete</button>
             </div>
           </div>
         ))}
-        {!loading && reviews.length === 0 && <p>No pending reviews.</p>}
+        {!loading && reviews.length === 0 && <p>No reviews for this filter.</p>}
       </div>
     </div>
   );
