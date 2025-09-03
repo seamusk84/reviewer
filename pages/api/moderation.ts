@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .json({ ok: false, error: "Supabase server key missing. Set SUPABASE_SERVICE_ROLE_KEY." });
   }
 
-  // Expect Authorization: Bearer <token>  (or x-mod-token)
+  // Expect Authorization: Bearer <token> (or x-mod-token)
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : (req.headers["x-mod-token"] as string);
   if (!token || token !== MOD_TOKEN) return unauthorized(res);
@@ -25,21 +25,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const supabase = createClient(url, serviceKey);
 
   if (req.method === "GET") {
-    const status = (req.query.status as string) || "pending";
+    // Filter: ?status=pending|approved|rejected
+    const status = ((req.query.status as string) || "pending").toLowerCase();
+    const allowed = ["pending", "approved", "rejected"];
+    const filter = allowed.includes(status) ? status : "pending";
+
     const { data, error } = await supabase
       .from("reviews")
       .select("*")
-      .eq("status", status)
+      .eq("status", filter)
       .order("inserted_at", { ascending: false })
       .limit(200);
+
     if (error) return res.status(500).json({ ok: false, error: error.message });
     return res.status(200).json({ ok: true, reviews: data || [] });
   }
 
   if (req.method === "POST") {
+    // { id, action: 'approve' | 'reject' | 'delete' }
     const { id, action } = req.body || {};
-    if (!id || !["approve", "reject"].includes(action))
+    if (!id || !["approve", "reject", "delete"].includes(action)) {
       return res.status(400).json({ ok: false, error: "Bad payload" });
+    }
+
+    if (action === "delete") {
+      const { error } = await supabase.from("reviews").delete().eq("id", id).limit(1);
+      if (error) return res.status(500).json({ ok: false, error: error.message });
+      return res.status(200).json({ ok: true, status: "deleted" });
+    }
 
     const newStatus = action === "approve" ? "approved" : "rejected";
     const { error } = await supabase
