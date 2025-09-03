@@ -12,55 +12,57 @@ function unauthorized(res: NextApiResponse) {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!url || !serviceKey) {
-    return res
-      .status(500)
-      .json({ ok: false, error: "Supabase server key missing. Set SUPABASE_SERVICE_ROLE_KEY." });
+    return res.status(500).json({ ok: false, error: "Server keys missing" });
   }
 
-  // Expect Authorization: Bearer <token> (or x-mod-token)
   const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : (req.headers["x-mod-token"] as string);
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== MOD_TOKEN) return unauthorized(res);
 
   const supabase = createClient(url, serviceKey);
 
   if (req.method === "GET") {
-    // Filter: ?status=pending|approved|rejected
-    const status = ((req.query.status as string) || "pending").toLowerCase();
-    const allowed = ["pending", "approved", "rejected"];
-    const filter = allowed.includes(status) ? status : "pending";
+    // view=pending|approved|rejected|deleted  (default pending)
+    const view = ((req.query.view as string) || "pending").toLowerCase();
 
-    const { data, error } = await supabase
-      .from("reviews")
-      .select("*")
-      .eq("status", filter)
-      .order("inserted_at", { ascending: false })
-      .limit(200);
+    let q = supabase.from("reviews").select("*").order("inserted_at", { ascending: false });
 
+    if (view === "deleted") {
+      q = q.not("deleted_at", "is", null);
+    } else {
+      q = q.is("deleted_at", null).eq("status", view);
+    }
+
+    const { data, error } = await q.limit(500);
     if (error) return res.status(500).json({ ok: false, error: error.message });
     return res.status(200).json({ ok: true, reviews: data || [] });
   }
 
   if (req.method === "POST") {
-    // { id, action: 'approve' | 'reject' | 'delete' }
-    const { id, action } = req.body || {};
-    if (!id || !["approve", "reject", "delete"].includes(action)) {
+    // { ids: string[]; action: 'approve'|'reject'|'delete'|'restore' }
+    const { ids, action } = req.body || {};
+    const list: string[] = Array.isArray(ids) ? ids : [];
+    if (!list.length || !["approve", "reject", "delete", "restore"].includes(action)) {
       return res.status(400).json({ ok: false, error: "Bad payload" });
     }
 
     if (action === "delete") {
-      const { error } = await supabase.from("reviews").delete().eq("id", id).limit(1);
+      const { error } = await supabase
+        .from("reviews")
+        .update({ deleted_at: new Date().toISOString() })
+        .in("id", list);
       if (error) return res.status(500).json({ ok: false, error: error.message });
       return res.status(200).json({ ok: true, status: "deleted" });
     }
 
-    const newStatus = action === "approve" ? "approved" : "rejected";
-    const { error } = await supabase
-      .from("reviews")
-      .update({ status: newStatus })
-      .eq("id", id)
-      .limit(1);
+    if (action === "restore") {
+      const { error } = await supabase.from("reviews").update({ deleted_at: null }).in("id", list);
+      if (error) return res.status(500).json({ ok: false, error: error.message });
+      return res.status(200).json({ ok: true, status: "restored" });
+    }
 
+    const newStatus = action === "approve" ? "approved" : "rejected";
+    const { error } = await supabase.from("reviews").update({ status: newStatus }).in("id", list);
     if (error) return res.status(500).json({ ok: false, error: error.message });
     return res.status(200).json({ ok: true, status: newStatus });
   }
