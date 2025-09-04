@@ -1,4 +1,3 @@
-// pages/[county]/[town]/[estate].tsx
 import { useRouter } from "next/router";
 import Script from "next/script";
 import { useEffect, useMemo, useState, FormEvent } from "react";
@@ -29,7 +28,6 @@ export default function EstatePage() {
   const [loadingList, setLoadingList] = useState(false);
   const [loadError, setLoadError] = useState<string>("");
 
-  // form state
   const [rating, setRating] = useState<number>(5);
   const [title, setTitle] = useState<string>("");
   const [body, setBody] = useState<string>("");
@@ -40,14 +38,10 @@ export default function EstatePage() {
   const [submitError, setSubmitError] = useState<string>("");
   const [submitOk, setSubmitOk] = useState<boolean>(false);
 
-  // hCaptcha
   const [captchaToken, setCaptchaToken] = useState<string>("");
 
-  // register the global callback that hCaptcha calls
   useEffect(() => {
-    window.onHcaptchaVerified = (token: string) => {
-      setCaptchaToken(token);
-    };
+    window.onHcaptchaVerified = (token: string) => setCaptchaToken(token);
   }, []);
 
   const pageKey = useMemo(() => {
@@ -55,40 +49,33 @@ export default function EstatePage() {
     return `${county}:${town}:${estate}`;
   }, [county, town, estate]);
 
-  // load approved reviews
   useEffect(() => {
     if (!county || !town || !estate) return;
-
-    const fetchReviews = async () => {
+    (async () => {
       setLoadingList(true);
       setLoadError("");
-
       try {
         const qs = new URLSearchParams({
           county: String(county),
           town: String(town),
           estate: String(estate),
         });
-
         const res = await fetch(`/api/reviews?${qs.toString()}`);
         const data = await res.json();
-
         if (!res.ok) {
           setLoadError(data?.error || "Failed to load reviews");
           setReviews([]);
         } else {
           setReviews(Array.isArray(data?.items) ? data.items : []);
         }
-      } catch (e: any) {
+      } catch {
         setLoadError("Failed to load reviews");
         setReviews([]);
       } finally {
         setLoadingList(false);
       }
-    };
-
-    fetchReviews();
-  }, [pageKey]); // reload when page key changes
+    })();
+  }, [pageKey]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -96,7 +83,6 @@ export default function EstatePage() {
     setSubmitOk(false);
     setSubmitError("");
 
-    // If captcha is enabled (siteKey present), require the token
     if (siteKey && !captchaToken) {
       setSubmitError("Please complete the captcha.");
       setSubmitting(false);
@@ -119,7 +105,6 @@ export default function EstatePage() {
           hcaptchaToken: captchaToken || undefined,
         }),
       });
-
       const data = await res.json();
       if (!res.ok) {
         setSubmitError(data?.error || "Submit failed");
@@ -129,16 +114,11 @@ export default function EstatePage() {
         setBody("");
         setName("");
         setEmail("");
-
-        // reset captcha after successful submit
+        setRating(5);
         setCaptchaToken("");
-        try {
-          window.hcaptcha?.reset?.();
-        } catch {}
-
-        // (Optional) re-fetch list so you can see it after approval later
+        try { window.hcaptcha?.reset?.(); } catch {}
       }
-    } catch (e: any) {
+    } catch {
       setSubmitError("Submit failed");
     } finally {
       setSubmitting(false);
@@ -149,142 +129,94 @@ export default function EstatePage() {
     const c = String(county || "");
     const t = String(town || "");
     const e = String(estate || "");
-    if (e.toLowerCase() === "all areas") {
-      return `all areas — ${t}, ${c}`;
-    }
+    if (e.toLowerCase() === "all areas") return `All Areas — ${t}, ${c}`;
     return `${e} — ${t}, ${c}`;
   }, [county, town, estate]);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 text-slate-100">
-      <h1 className="text-2xl font-semibold mb-1">{heading}</h1>
-      <p className="text-sm text-slate-400 mb-6">
-        New reviews are moderated before publishing.
-      </p>
+    <div>
+      <h1 className="page-title">{heading}</h1>
+      <p className="page-sub">New reviews are moderated before publishing.</p>
 
-      {/* Reviews */}
-      <section className="mb-10">
-        <h2 className="text-lg font-medium mb-3">Reviews</h2>
-        {loadingList && <p className="text-slate-400">Loading…</p>}
-        {!!loadError && (
-          <p className="text-red-400 text-sm mb-3">{loadError}</p>
-        )}
-        {!loadingList && !loadError && reviews.length === 0 && (
-          <p className="text-slate-400 text-sm">No reviews yet.</p>
-        )}
-        <ul className="space-y-4">
-          {reviews.map((r) => (
-            <li key={r.id} className="rounded-lg bg-slate-800 p-4">
-              <div className="text-sm text-slate-400">
-                {new Date(r.inserted_at).toLocaleDateString()}
-              </div>
-              <div className="font-semibold">
-                {r.title || "(No title)"} • {r.rating}/5
-              </div>
-              <div className="whitespace-pre-wrap">{r.body}</div>
-              <div className="text-sm text-slate-400 mt-1">
-                {r.name ? `by ${r.name}` : ""}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {/* Write a review */}
-      <section>
-        <h2 className="text-lg font-medium mb-3">Write a review</h2>
+      <section className="card card-pad" style={{ marginBottom: 24 }}>
+        <h2 style={{ marginTop: 0 }}>Leave a review</h2>
 
         {!!submitOk && (
-          <div className="mb-3 rounded bg-emerald-800/40 px-3 py-2 text-sm">
+          <div className="card card-pad" style={{ background: "#ecfdf5", borderColor: "#bbf7d0", color: "#065f46", padding: "12px", marginBottom: "10px" }}>
             Thanks! Your review was submitted and is pending approval.
           </div>
         )}
         {!!submitError && (
-          <div className="mb-3 rounded bg-rose-900/40 px-3 py-2 text-sm">
+          <div className="card card-pad" style={{ background: "#fef2f2", borderColor: "#fecaca", color: "#7f1d1d", padding: "12px", marginBottom: "10px" }}>
             {submitError}
           </div>
         )}
 
-        <form onSubmit={onSubmit} className="rounded-xl bg-slate-800 p-4 space-y-3">
-          <div>
-            <label className="block text-sm mb-1">Rating (1–5)</label>
-            <input
-              type="number"
-              min={1}
-              max={5}
-              value={rating}
-              onChange={(e) => setRating(Number(e.target.value) || 5)}
-              className="w-full rounded bg-slate-900 px-3 py-2"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm mb-1">Title (optional)</label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded bg-slate-900 px-3 py-2"
-              placeholder="Short headline"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm mb-1">Your review</label>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              className="w-full rounded bg-slate-900 px-3 py-2 h-40"
-              placeholder="Share your experience…"
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <form onSubmit={onSubmit} className="form-row" style={{ gap: 14 }}>
+          <div className="form-row form-row-3">
             <div>
-              <label className="block text-sm mb-1">Your name (optional)</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full rounded bg-slate-900 px-3 py-2"
-                placeholder="Name"
-              />
+              <label className="label">Rating (1–5)</label>
+              <input className="input" type="number" min={1} max={5} value={rating}
+                     onChange={(e)=>setRating(Number(e.target.value)||5)} />
             </div>
             <div>
-              <label className="block text-sm mb-1">
-                Email (optional, not shown)
-              </label>
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded bg-slate-900 px-3 py-2"
-                placeholder="you@example.com"
-              />
+              <label className="label">Title (optional)</label>
+              <input className="input" value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Short headline" />
+            </div>
+            <div>
+              <label className="label">Your name (optional)</label>
+              <input className="input" value={name} onChange={(e)=>setName(e.target.value)} placeholder="Name" />
             </div>
           </div>
 
-          {/* hCaptcha (only rendered if a sitekey exists) */}
-          {siteKey && (
-            <>
-              <Script
-                src="https://js.hcaptcha.com/1/api.js"
-                strategy="afterInteractive"
-              />
-              <div
-                className="h-captcha mt-2"
-                data-sitekey={siteKey}
-                data-callback="onHcaptchaVerified"
-              />
-            </>
-          )}
+          <div>
+            <label className="label">Your review</label>
+            <textarea className="input" rows={6} value={body} onChange={(e)=>setBody(e.target.value)} placeholder="Share your experience…" required />
+          </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-2 w-full rounded bg-emerald-500 px-4 py-2 font-medium text-emerald-950 disabled:opacity-60"
-          >
+          <div className="form-row form-row-2">
+            <div>
+              <label className="label">Email (optional, not shown)</label>
+              <input className="input" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="you@example.com" />
+            </div>
+            <div>
+              {/* hCaptcha (only renders if siteKey provided) */}
+              {siteKey && (
+                <>
+                  <Script src="https://js.hcaptcha.com/1/api.js" strategy="afterInteractive" />
+                  <div className="h-captcha" data-sitekey={siteKey} data-callback="onHcaptchaVerified" />
+                  {/* <small className="helper">captcha token: {captchaToken ? `${captchaToken.length} chars` : 'none'}</small> */}
+                </>
+              )}
+            </div>
+          </div>
+
+          <button className="btn" type="submit" disabled={submitting}>
             {submitting ? "Submitting…" : "Submit review"}
           </button>
         </form>
+      </section>
+
+      <section className="card card-pad">
+        <h2 style={{ marginTop: 0 }}>Recent reviews</h2>
+        {loadingList && <p className="helper">Loading…</p>}
+        {!!loadError && <p className="helper" style={{ color: "#b91c1c" }}>{loadError}</p>}
+        {!loadingList && !loadError && reviews.length === 0 && (
+          <p className="helper">No reviews yet.</p>
+        )}
+        <div>
+          {reviews.map((r) => (
+            <div key={r.id} className="review-item">
+              <div className="review-meta">
+                {new Date(r.inserted_at).toLocaleDateString()} • <span className="stars">{"★".repeat(r.rating)}{"☆".repeat(5-r.rating)}</span>
+              </div>
+              <div style={{ fontWeight: 600 }}>{r.title || "(No title)"}</div>
+              <div style={{ whiteSpace: "pre-wrap" }}>{r.body}</div>
+              <div className="review-meta">{r.name ? `by ${r.name}` : ""}</div>
+              <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "12px 0" }} />
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );
