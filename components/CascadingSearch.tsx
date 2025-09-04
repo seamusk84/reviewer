@@ -1,220 +1,151 @@
-// components/CascadingSearch.tsx
-import React, {
-  useEffect,
-  useRef,
-  useState,
-  KeyboardEvent,
-  FormEvent,
-} from "react";
+import React from "react";
 
 type DataShape = Record<string, Record<string, string[]>>;
 type Props = {
-  fetchData: () => Promise<DataShape | undefined>;
+  fetchData: () => Promise<DataShape>;
   onNavigate: (path: string) => void;
 };
 
-function slugify(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "");
-}
-
 export default function CascadingSearch({ fetchData, onNavigate }: Props) {
-  const [data, setData] = useState<DataShape>({});
-  const [counties, setCounties] = useState<string[]>([]);
-  const [towns, setTowns] = useState<string[]>([]);
-  const [estates, setEstates] = useState<string[]>([]);
+  const [data, setData] = React.useState<DataShape>({});
+  const [counties, setCounties] = React.useState<string[]>([]);
+  const [towns, setTowns] = React.useState<string[]>([]);
+  const [estates, setEstates] = React.useState<string[]>([]);
 
-  const [county, setCounty] = useState("");
-  const [town, setTown] = useState("");
-  const [estate, setEstate] = useState("");
+  const [county, setCounty] = React.useState("");
+  const [town, setTown] = React.useState("");
+  const [estate, setEstate] = React.useState("");
 
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
+  const [loading, setLoading] = React.useState(true);
 
-  const countyRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
+  React.useEffect(() => {
     (async () => {
-      try {
-        setLoading(true);
-        const d = (await fetchData()) || {};
-        setData(d);
-        setCounties(Object.keys(d).sort((a, b) => a.localeCompare(b)));
-        setMsg(null);
-      } catch (e: any) {
-        setMsg(e.message || "Failed to load data");
-      } finally {
-        setLoading(false);
-        if (countyRef.current && typeof window !== "undefined" && window.innerWidth > 640) {
-          countyRef.current.focus();
-        }
-      }
+      setLoading(true);
+      const d = await fetchData();
+      setData(d || {});
+      const cs = Object.keys(d || {}).sort((a,b)=>a.localeCompare(b));
+      setCounties(cs);
+      setLoading(false);
     })();
   }, [fetchData]);
 
-  useEffect(() => {
-    if (!county) {
-      setTowns([]); setTown("");
-      setEstates([]); setEstate("");
-      return;
-    }
-    const t = Object.keys(data[county] || {}).sort((a, b) => a.localeCompare(b));
+  React.useEffect(() => {
+    const t = (data[county] ? Object.keys(data[county]) : []).sort((a,b)=>a.localeCompare(b));
     setTowns(t);
-    if (!t.includes(town)) {
-      setTown(""); setEstates([]); setEstate("");
-    }
-  }, [county, data]); // eslint-disable-line react-hooks/exhaustive-deps
+    setTown("");
+    setEstate("");
+    setEstates([]);
+  }, [county]);
 
-  useEffect(() => {
-    if (!county || !town) { setEstates([]); setEstate(""); return; }
-    const e = [...(data[county]?.[town] || [])].sort((a, b) => a.localeCompare(b));
+  React.useEffect(() => {
+    const e = (data[county] && data[county][town] ? [...data[county][town]] : []).sort((a,b)=>a.localeCompare(b));
     setEstates(e);
-    if (!e.includes(estate)) setEstate(e[0] || "");
-  }, [county, town, data]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function closest(list: string[], val: string) {
-    if (!val) return "";
-    const i = list.findIndex((x) => x.toLowerCase().startsWith(val.toLowerCase()));
-    if (i >= 0) return list[i];
-    const after = list.find((x) => x.toLowerCase() >= val.toLowerCase());
-    return after || list[list.length - 1] || "";
-  }
+    setEstate("");
+  }, [town, county, data]);
 
   function go() {
-    if (!county || !town) return;
-    const e = estate || "All Areas";
-    onNavigate(`/${slugify(county)}/${slugify(town)}/${slugify(e)}`);
+    if (!county || !town || !estate) return;
+    const safe = (s:string)=>encodeURIComponent(s.toLowerCase().replace(/\s+/g,"-"));
+    onNavigate(`/${safe(county)}/${safe(town)}/${safe(estate)}`);
   }
 
-  const onEnter = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      go();
-    }
-  };
-
-  async function submitSuggestion(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const payload = {
-      county: fd.get("county"),
-      town: fd.get("town"),
-      estate: fd.get("estate"),
-      email: fd.get("email"),
-      note: fd.get("note"),
-    };
-    try {
-      await fetch("/api/suggestions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      alert("Thanks! We’ve recorded your suggestion.");
-      setShowAdd(false);
-    } catch {
-      alert("Could not send right now — try again later.");
-    }
+  // helper to pick the first alphabetical match when typing
+  function pickClosest(val: string, list: string[]) {
+    const v = val.trim().toLowerCase();
+    if (!v) return "";
+    const exact = list.find(x => x.toLowerCase() === v);
+    if (exact) return exact;
+    const starts = list.find(x => x.toLowerCase().startsWith(v));
+    if (starts) return starts;
+    return list[0] || "";
   }
 
   return (
-    <div className="card">
-      <div className="hero">
-        <div className="kicker">Find your neighbourhood</div>
-        <h1>Search by County, then Town/Region, then Estate/Area</h1>
-        <p>Type to filter each list. If there’s no exact match, we snap to the nearest alphabetical match.</p>
+    <section id="browse">
+      <h1 className="page-title">Find your estate</h1>
+      <p className="page-sub">Drill down by <strong>County</strong> → <strong>Town/Region</strong> → <strong>Estate/Area</strong>.</p>
+
+      <div className="card card-pad">
+        {loading ? (
+          <p className="helper">Loading places…</p>
+        ) : (
+          <>
+            <div className="form-row form-row-3">
+              {/* County */}
+              <div>
+                <label className="label" htmlFor="county">County</label>
+                <input
+                  id="county"
+                  className="input"
+                  placeholder="Start typing a county…"
+                  list="counties"
+                  value={county}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    // allow free typing; on blur snap to closest
+                    setCounty(v);
+                  }}
+                  onBlur={(e)=>{
+                    const v = pickClosest(e.target.value, counties);
+                    setCounty(v);
+                  }}
+                />
+                <datalist id="counties">
+                  {counties.map(c => <option key={c} value={c} />)}
+                </datalist>
+                <p className="helper">Type to filter. We’ll pick the closest match on blur.</p>
+              </div>
+
+              {/* Town */}
+              <div>
+                <label className="label" htmlFor="town">Town / Region</label>
+                <input
+                  id="town"
+                  className="input"
+                  placeholder={county ? "Start typing a town…" : "Select a county first"}
+                  list="towns"
+                  value={town}
+                  onChange={(e)=>setTown(e.target.value)}
+                  onBlur={(e)=>{
+                    const v = pickClosest(e.target.value, towns);
+                    setTown(v);
+                  }}
+                  disabled={!county}
+                />
+                <datalist id="towns">
+                  {towns.map(t => <option key={t} value={t} />)}
+                </datalist>
+              </div>
+
+              {/* Estate */}
+              <div>
+                <label className="label" htmlFor="estate">Estate / Area</label>
+                <input
+                  id="estate"
+                  className="input"
+                  placeholder={town ? "Start typing an estate…" : "Select a town first"}
+                  list="estates"
+                  value={estate}
+                  onChange={(e)=>setEstate(e.target.value)}
+                  onBlur={(e)=>{
+                    const v = pickClosest(e.target.value, estates);
+                    setEstate(v);
+                  }}
+                  disabled={!town}
+                />
+                <datalist id="estates">
+                  {estates.map(e => <option key={e} value={e} />)}
+                </datalist>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
+              <button className="btn" onClick={go} disabled={!county || !town || !estate}>Search</button>
+              <span className="helper">Tip: choose “All Areas” to review the whole town.</span>
+            </div>
+          </>
+        )}
       </div>
-
-      {loading && <p className="kicker">Loading data…</p>}
-      {msg && <p className="kicker" style={{ color: "#ffbdbd" }}>{msg}</p>}
-
-      <div className="grid grid-3" style={{ marginTop: 12 }}>
-        <div>
-          <label className="label" htmlFor="county">County</label>
-          <input
-            id="county"
-            className="input"
-            list="counties"
-            placeholder="Start typing a county…"
-            value={county}
-            onChange={(e) => setCounty(closest(counties, e.target.value))}
-            onKeyDown={onEnter}
-            ref={countyRef}
-            autoComplete="off"
-            aria-autocomplete="list"
-          />
-          <datalist id="counties">
-            {counties.map((c) => <option key={c} value={c} />)}
-          </datalist>
-        </div>
-
-        <div>
-          <label className="label" htmlFor="town">Town / Region</label>
-          <input
-            id="town"
-            className="input"
-            list="towns"
-            placeholder={county ? "Start typing a town…" : "Pick a county first"}
-            value={town}
-            onChange={(e) => setTown(closest(towns, e.target.value))}
-            onKeyDown={onEnter}
-            disabled={!county}
-            autoComplete="off"
-            aria-autocomplete="list"
-          />
-          <datalist id="towns">
-            {towns.map((t) => <option key={t} value={t} />)}
-          </datalist>
-        </div>
-
-        <div>
-          <label className="label" htmlFor="estate">Estate / Area</label>
-          <input
-            id="estate"
-            className="input"
-            list="estates"
-            placeholder={town ? "Type or choose an estate…" : "Pick a town first"}
-            value={estate}
-            onChange={(e) => setEstate(closest(estates, e.target.value))}
-            onKeyDown={onEnter}
-            disabled={!town}
-            autoComplete="off"
-            aria-autocomplete="list"
-          />
-          <datalist id="estates">
-            {estates.map((e) => <option key={e} value={e} />)}
-          </datalist>
-        </div>
-      </div>
-
-      <div className="row" style={{ marginTop: 14 }}>
-        <button className="button" onClick={go} disabled={!county || !town}>Go to estate page</button>
-        <button className="button secondary" onClick={() => { setCounty(""); setTown(""); setEstate(""); }}>Clear</button>
-        <button className="button secondary" onClick={() => setShowAdd((s) => !s)}>Don’t see yours?</button>
-      </div>
-
-      {showAdd && (
-        <form onSubmit={submitSuggestion} className="card" style={{ marginTop: 16 }}>
-          <div className="grid grid-2">
-            <div><div className="label">County</div><input name="county" className="input" defaultValue={county} required /></div>
-            <div><div className="label">Town / Region</div><input name="town" className="input" defaultValue={town} required /></div>
-            <div><div className="label">Estate / Area</div><input name="estate" className="input" defaultValue={estate} required /></div>
-            <div><div className="label">Email (optional)</div><input name="email" className="input" type="email" placeholder="you@example.com" /></div>
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <div className="label">Notes (optional)</div>
-            <textarea name="note" className="input" rows={4} placeholder="Anything we should know?"></textarea>
-          </div>
-          <div className="row" style={{ marginTop: 12 }}>
-            <button className="button">Submit suggestion</button>
-            <button type="button" className="button secondary" onClick={() => setShowAdd(false)}>Cancel</button>
-          </div>
-          <p className="small" style={{ marginTop: 8 }}>We only use your email to follow up if needed.</p>
-        </form>
-      )}
-
-      <p className="small" style={{ marginTop: 14 }}>
-        Admin quick tools: <a href="/data/estates.csv" style={{ color: "var(--brand)" }}>download current CSV</a>
-      </p>
-    </div>
+    </section>
   );
 }
