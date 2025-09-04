@@ -1,128 +1,152 @@
 // pages/api/reviews.ts
 import type { NextApiRequest, NextApiResponse } from "next";
+import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import crypto from "crypto";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, anonKey);
-const service = createClient(supabaseUrl, serviceKey);
 
-const RATE_LIMIT_SECRET = process.env.RATE_LIMIT_SECRET || "";
-const RATE_LIMIT_PER_HOUR = parseInt(process.env.RATE_LIMIT_PER_HOUR || "5", 10);
+const supabase = createClient(supabaseUrl, serviceKey, {
+  auth: { persistSession: false },
+});
 
-// ---------- helpers ----------
-function getClientIp(req: NextApiRequest): string {
-  const xfwd = req.headers["x-forwarded-for"];
-  if (typeof xfwd === "string") return xfwd.split(",")[0].trim();
-  if (Array.isArray(xfwd)) return xfwd[0];
-  return req.socket?.remoteAddress || "0.0.0.0";
+const RATE_LIMIT_PER_HOUR = Number(process.env.RATE_LIMIT_PER_HOUR || "3");
+const RATE_LIMIT_SECRET = process.env.RATE_LIMIT_SECRET || "fallback-secret";
+const HCAPTCHA_SECRET = process.env.HCAPTCHA_SECRET || "";
+
+function ipFromReq(req: NextApiRequest) {
+  const xf = (req.headers["x-forwarded-for"] as string) || "";
+  return (xf.split(",")[0] || req.socket.remoteAddress || "").trim();
 }
 function hashIp(ip: string) {
-  if (!RATE_LIMIT_SECRET) return ip;
   return crypto.createHmac("sha256", RATE_LIMIT_SECRET).update(ip).digest("hex");
 }
-async function verifyHCaptcha(token?: string) {
-  // If keys not set, treat captcha as disabled (always pass)
-  if (!process.env.HCAPTCHA_SECRET || !process.env.NEXT_PUBLIC_HCAPTCHA_SITEKEY) {
-    return { success: true };
-  }
-  if (!token) return { success: false, "error-codes": ["missing-token"] };
 
-  const body = new URLSearchParams();
-  body.set("secret", process.env.HCAPTCHA_SECRET);
-  body.set("response", token);
+async function verifyCaptcha(token: string | undefined, ip: string) {
+  // If not configured, allow through
+  if (!HCAPTCHA_SECRET) return { ok: true };
+  if (!token) return { ok: false, code: "captcha-missing" };
 
   try {
-    const r = await fetch("https://hcaptcha.com/siteverify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
+    const body = new URLSearchParams({
+      secret: HCAPTCHA_SECRET,
+      response: token,
+      remoteip: ip,
     });
-    return await r.json();
+    const res = await fetch("https://hcaptcha.com/siteverify", {
+      method: "POST",
+      body,
+    });
+    const json = await res.json();
+    if (json.success) return { ok: true };
+    return { ok: false, code: "captcha-failed", details: json["error-codes"] };
   } catch {
-    return { success: false, "error-codes": ["verify-failed"] };
+    return { ok: false, code: "captcha-error" };
   }
 }
 
-// ---------- handler ----------
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method === "GET") {
-    // Return approved reviews for a page
-    const { county, town, estate } = req.query;
-    if (!county || !town || !estate) {
-      return res.status(400).json({ error: "missing-params" });
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  try {
+    // -------- GET (load approved) --------
+    if (req.method === "GET") {
+      const { county, town, estate } = req.query;
+      if (!county || !town || !estate)
+        return res.status(400).json({ error: "missing-params" });
+
+      const { data, error } = await supabase
+        .from("reviews")
+        .select("id, inserted_at, rating, title, body, name")
+        .eq("status", "approved")
+        .is("deleted_at", null)
+        .eq("county", String(county))
+        .eq("town", String(town))
+        .eq("estate", String(estate))
+        .order("inserted_at", { ascending: false })
+        .limit(100);
+
+      if (error) {
+        console.error("[REVIEWS][GET] supabase", error);
+        return res.status(500).json({ error: "db-error" });
+      }
+      return res.json({ items: data || [] });
     }
-    const { data, error } = await supabase
-      .from("reviews")
-      .select("id, inserted_at, rating, title, body, name")
-      .eq("county", String(county))
-      .eq("town", String(town))
-      .eq("estate", String(estate))
-      .eq("status", "approved")
-      .is("deleted_at", null)
-      .order("inserted_at", { ascending: false })
-      .limit(50);
 
-    if (error) return res.status(500).json({ error: "list-failed" });
-    return res.status(200).json({ items: data || [] });
-  }
+    // -------- POST (submit pending) --------
+    if (req.method === "POST") {
+      const ip = ipFromReq(req);
+      const ipHash = hashIp(ip);
 
-  if (req.method === "POST") {
-    const { county, town, estate, rating, title, body, name, email, hcaptchaToken } = req.body || {};
+      const {
+        county,
+        town,
+        estate,
+        rating,
+        title,
+        body,
+        name,
+        email,
+        hcaptchaToken,
+      } = req.body || {};
 
-    // 1) Rate limit
-    const ip = getClientIp(req);
-    const ipHash = hashIp(ip);
-    const sinceIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      if (!county || !town || !estate || !body || !rating)
+        return res.status(400).json({ error: "invalid-payload" });
 
-    if (RATE_LIMIT_SECRET) {
-      const { count, error: countErr } = await service
+      const r = Number(rating);
+      if (Number.isNaN(r) || r < 1 || r > 5)
+        return res.status(400).json({ error: "invalid-rating" });
+
+      // Captcha (only enforced if HCAPTCHA_SECRET is set)
+      const captcha = await verifyCaptcha(hcaptchaToken, ip);
+      if (!captcha.ok) {
+        console.warn("[HCAPTCHA]", captcha);
+        return res.status(400).json({ error: "captcha-failed" });
+      }
+
+      // Rate limit: count last 60 minutes
+      const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count: recentCount, error: rlErr } = await supabase
         .from("submission_log")
-        .select("id", { head: true, count: "exact" })
+        .select("*", { count: "exact", head: true })
         .eq("ip_hash", ipHash)
-        .gte("inserted_at", sinceIso);
+        .gte("inserted_at", since);
 
-      if (countErr) return res.status(500).json({ error: "rate-limit-check-failed" });
-      if ((count || 0) >= RATE_LIMIT_PER_HOUR) {
-        return res.status(429).json({ error: "Too many submissions. Please try later." });
+      if (rlErr) console.error("[RATE-LIMIT] count error", rlErr);
+      if ((recentCount || 0) >= RATE_LIMIT_PER_HOUR)
+        return res.status(429).json({ error: "too-many" });
+
+      // Insert review (pending)
+      const { error: insErr } = await supabase.from("reviews").insert({
+        county,
+        town,
+        estate,
+        rating: r,
+        title: title || null,
+        body,
+        name: name || null,
+        email: email || null,
+        status: "pending",
+      });
+      if (insErr) {
+        console.error("[REVIEWS][INSERT]", insErr);
+        return res.status(500).json({ error: "insert-failed" });
       }
+
+      // Log submission for rate limit window
+      const { error: logErr } = await supabase
+        .from("submission_log")
+        .insert({ ip_hash: ipHash });
+      if (logErr) console.warn("[RATE-LIMIT] log insert warn", logErr);
+
+      return res.status(200).json({ ok: true });
     }
 
-    // 2) Captcha
-    const cap = await verifyHCaptcha(hcaptchaToken);
-    if (!cap.success) return res.status(400).json({ error: "captcha-failed" });
-
-    // 3) Log request
-    if (RATE_LIMIT_SECRET) {
-      await service.from("submission_log").insert({ ip_hash: ipHash });
-    }
-
-    // 4) Insert review (pending)
-    const { error: insErr } = await supabase.from("reviews").insert({
-      county, town, estate, rating, title, body, name, email: email || null, status: "pending",
-    });
-    if (insErr) return res.status(500).json({ error: "insert-failed" });
-
-    // 5) Optional email alert via Resend
-    if (process.env.RESEND_API_KEY && process.env.ALERT_EMAIL_FROM && process.env.ALERT_EMAIL_TO) {
-      try {
-        const { Resend } = await import("resend");
-        const resend = new Resend(process.env.RESEND_API_KEY);
-        await resend.emails.send({
-          from: process.env.ALERT_EMAIL_FROM,
-          to: process.env.ALERT_EMAIL_TO,
-          subject: "New review submitted (pending)",
-          text: `${county} / ${town} / ${estate}\n\nTitle: ${title}\nRating: ${rating}\n\n${body}\n\nFrom: ${name} ${email || ""}`,
-        });
-      } catch {
-        /* non-fatal */
-      }
-    }
-
-    return res.status(200).json({ ok: true, status: "pending" });
+    res.setHeader("Allow", "GET, POST");
+    return res.status(405).json({ error: "method-not-allowed" });
+  } catch (e) {
+    console.error("[REVIEWS] unhandled", e);
+    return res.status(500).json({ error: "server-error" });
   }
-
-  return res.status(405).json({ error: "Method not allowed" });
 }
