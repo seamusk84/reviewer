@@ -115,3 +115,97 @@ a:hover { text-decoration: underline; }
 
 /* Simple badges/stars */
 .stars { color: #f59e0b; font-weight: 700; }
+:root {
+  --purple: #7c3aed;           /* primary */
+  --purple-700: #6d28d9;       /* darker */
+  --purple-50: #f3e8ff;        /* light background */
+  --ink: #111827;              /* main text */
+  --muted: #4b5563;
+  --border: #e5e7eb;
+}
+
+/* Layout helpers */
+.wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* Top tagline (slogan) */
+.tagline-bar {
+  background: var(--purple-50);
+  color: var(--purple-700);
+  font-size: 14px;
+  line-height: 1;
+  border-bottom: 1px solid #eadcff;
+}
+.tagline-bar .wrap {
+  padding: 10px 16px;
+}
+.tagline-bar .tagline strong {
+  font-weight: 700;
+}
+
+/* Main header */
+.site-header {
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+.site-header .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+}
+
+/* Brand + logo */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.logo-box {
+  width: 48px;            /* bigger */
+  height: 48px;           /* bigger */
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #fff;            /* icon color */
+  background: var(--purple);
+  box-shadow: 0 3px 8px rgba(124, 58, 237, 0.25);
+}
+.logo-icon {
+  display: block;
+}
+.brand-text {
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  font-size: 20px;
+}
+
+/* Nav */
+.nav a {
+  color: var(--muted);
+  text-decoration: none;
+  margin-left: 18px;
+  font-weight: 600;
+}
+.nav a:hover {
+  color: var(--purple-700);
+}
+
+/* Make header tidy on small screens */
+@media (max-width: 560px) {
+  .brand-text {
+    font-size: 18px;
+  }
+  .logo-box {
+    width: 44px;
+    height: 44px;
+  }
+  .nav a {
+    margin-left: 14px;
+  }
+}
