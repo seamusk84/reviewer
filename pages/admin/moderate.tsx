@@ -39,6 +39,7 @@ export default function Moderate() {
       return n;
     });
   }
+
   function toggleAll() {
     setSelected(selected.size === reviews.length ? new Set() : new Set(reviews.map(r => r.id)));
   }
@@ -87,10 +88,71 @@ export default function Moderate() {
     }
   }
 
+  async function exportCsvCurrentView() {
+    try {
+      setError(null);
+      const res = await fetch(`/api/export-reviews?view=${view}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({} as any));
+        throw new Error(j?.error || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = /filename="([^"]+)"/i.exec(cd);
+      const filename = match?.[1] || `reviews-${view}.csv`;
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+
+  async function exportCsvSelected() {
+    try {
+      setError(null);
+      const ids = Array.from(selected);
+      if (!ids.length) return;
+      const res = await fetch("/api/export-reviews", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ids, view }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({} as any));
+        throw new Error(j?.error || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = /filename="([^"]+)"/i.exec(cd);
+      const filename = match?.[1] || `reviews-selected.csv`;
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+
   return (
     <div style={{ maxWidth: 1000, margin: "32px auto", padding: "0 16px" }}>
       <h1>Moderator</h1>
-      <p className="small">Enter password → choose view → load → bulk actions / per-row actions.</p>
+      <p className="small">Enter password → choose view → load → bulk actions / export CSV.</p>
 
       <div className="card" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input
@@ -112,6 +174,12 @@ export default function Moderate() {
         </select>
         <button className="button" onClick={load} disabled={!token || loading}>
           {loading ? "Loading…" : "Load"}
+        </button>
+        <button className="button" onClick={exportCsvCurrentView} disabled={!token || loading}>
+          Export current view (CSV)
+        </button>
+        <button className="button secondary" onClick={exportCsvSelected} disabled={selected.size === 0 || loading}>
+          Export selected (CSV)
         </button>
         {error && <span className="small" style={{ color: "#ffbdbd", marginLeft: 8 }}>{error}</span>}
       </div>
