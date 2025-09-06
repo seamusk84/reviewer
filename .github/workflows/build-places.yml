@@ -1,0 +1,49 @@
+name: Build places.csv
+
+on:
+  workflow_dispatch:
+    inputs:
+      only_counties:
+        description: "Comma-separated counties to include (e.g., Dublin,Kildare)"
+        required: false
+        default: ""
+      max_towns:
+        description: "Limit number of towns (0 = all)"
+        required: false
+        default: "0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Run builder
+        env:
+          ONLY_COUNTIES: ${{ github.event.inputs.only_counties }}
+          MAX_TOWNS: ${{ github.event.inputs.max_towns }}
+          SLEEP_MS: "1500"
+        run: |
+          node --version
+          node tools/build-places.mjs
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/data/places.csv
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "build: update places.csv (counties='${{ github.event.inputs.only_counties }}', max_towns='${{ github.event.inputs.max_towns }}')"
+            git push
+          fi
