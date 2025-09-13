@@ -1,126 +1,131 @@
 // pages/index.tsx
-import { useEffect, useMemo, useState } from "react";
-import type { EstateRow } from "../types/estates";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/router";
 
-// Tiny loader that reads from /public/data/estates.json
-async function loadEstates(): Promise<EstateRow[]> {
-  const res = await fetch("/data/estates.json", { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to load estates.json");
-  return res.json();
+const CascadingSearch = dynamic(() => import("../components/CascadingSearch"), { ssr: false });
+
+// --- CSV helpers (handles quotes / commas safely)
+function splitCSVLine(line: string): string[] {
+  const cells = line.match(/("([^"]|"")*"|[^,]+)/g) || [];
+  return cells.map((c) => {
+    let s = c.trim();
+    if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1).replace(/""/g, '"');
+    return s;
+  });
+}
+
+// Parse simple CSV header: county,town,estate
+function parseSimpleCSV(text: string) {
+  text = text.replace(/^\uFEFF/, "");
+  const lines = text.trim().split(/\r?\n/);
+  const header = lines.shift();
+  if (!header) return {};
+  const cols = splitCSVLine(header).map((h) => h.trim().toLowerCase());
+  const iCounty = cols.indexOf("county");
+  const iTown = cols.indexOf("town");
+  const iEstate = cols.indexOf("estate");
+  const data: Record<string, Record<string, string[]>> = {};
+  for (const line of lines) {
+    if (!line) continue;
+    const parts = splitCSVLine(line);
+    const county = parts[iCounty]?.trim();
+    const town = parts[iTown]?.trim();
+    const estate = (parts[iEstate]?.trim() || "All Areas");
+    if (!county || !town) continue;
+    data[county] = data[county] || {};
+    data[county][town] = data[county][town] || [];
+    if (!data[county][town].includes(estate)) data[county][town].push(estate);
+  }
+  return data;
+}
+
+// Parse CSO BUA CSV (tolerant to header naming)
+function parseCsoBUA(text: string) {
+  text = text.replace(/^\uFEFF/, "");
+  const lines = text.trim().split(/\r?\n/);
+  const header = lines.shift();
+  if (!header) return {};
+  const headers = splitCSVLine(header).map((h) => h.trim());
+  const find = (patterns: RegExp[]) => headers.findIndex((h) => patterns.some((p) => p.test(h)));
+  const idxName = find([/URBAN[_ ]?AREA[_ ]?NAME/i, /BUA[_ ]?NAME/i, /URBAN[_ ]?AREA/i, /^NAME$/i]);
+  const idxCounty = find([/^COUNTY$/i, /^COUNTY[_ ]?NAME$/i]);
+  if (idxName < 0 || idxCounty < 0) return {};
+  const data: Record<string, Record<string, string[]>> = {};
+  for (const line of lines) {
+    if (!line) continue;
+    const parts = splitCSVLine(line);
+    const town = (parts[idxName] || "").trim();
+    const county = (parts[idxCounty] || "").trim();
+    if (!town || !county) continue;
+    data[county] = data[county] || {};
+    data[county][town] = data[county][town] || [];
+    if (!data[county][town].includes("All Areas")) data[county][town].push("All Areas");
+  }
+  return data;
+}
+
+// Merge two DataShapes (dedupe estates)
+function mergeData(a: any, b: any) {
+  const out: Record<string, Record<string, string[]>> = JSON.parse(JSON.stringify(a || {}));
+  for (const [county, towns] of Object.entries(b || {})) {
+    out[county] = out[county] || {};
+    for (const [town, estates] of Object.entries(towns as Record<string, string[]>)) {
+      out[county][town] = out[county][town] || [];
+      for (const e of estates) {
+        if (!out[county][town].includes(e)) out[county][town].push(e);
+      }
+    }
+  }
+  return out;
 }
 
 export default function Home() {
-  const [rows, setRows] = useState<EstateRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
-  const [county, setCounty] = useState("");
-  const [town, setTown] = useState("");
+  const fetchData = async () => {
+    // 1) Preferred: single combined file
+    try {
+      const r = await fetch("/data/places.csv", { cache: "no-cache" });
+      if (r.ok) {
+        const txt = await r.text();
+        const d = parseSimpleCSV(txt);
+        const c = Object.keys(d).length;
+        const t = Object.values(d).reduce((acc, v) => acc + Object.keys(v).length, 0);
+        console.log("[IER] Loaded", c, "counties,", t, "towns (places.csv)");
+        return d;
+      }
+    } catch {}
 
-  useEffect(() => {
-    setLoading(true);
-    loadEstates()
-      .then((data) => {
-        setRows(data);
-        setError(null);
-      })
-      .catch((e: unknown) => {
-        console.error(e);
-        setError("Could not load estates. Please try again.");
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    // 2) Fallback: CSO towns + custom estates.csv
+    let cso: any = {};
+    try {
+      const rr = await fetch("/data/cso_bua_2022.csv", { cache: "no-cache" });
+      if (rr.ok) cso = parseCsoBUA(await rr.text());
+    } catch {}
+    let custom: any = {};
+    try {
+      const rr = await fetch("/data/estates.csv", { cache: "no-cache" });
+      if (rr.ok) custom = parseSimpleCSV(await rr.text());
+    } catch {}
 
-  // Unique, sorted lists for each dropdown
-  const counties = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.county))).sort(),
-    [rows]
-  );
-
-  const towns = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          rows
-            .filter((r) => !county || r.county === county)
-            .map((r) => r.town)
-        )
-      ).sort(),
-    [rows, county]
-  );
-
-  const estates = useMemo(
-    () =>
-      rows
-        .filter(
-          (r) => (!county || r.county === county) && (!town || r.town === town)
-        )
-        .map((r) => r.estate)
-        .filter(Boolean) as string[],
-    [rows, county, town]
-  );
+    const merged = mergeData(cso, custom);
+    const c = Object.keys(merged).length;
+    const t = Object.values(merged).reduce((acc, v) => acc + Object.keys(v).length, 0);
+    console.log("[IER] Loaded", c, "counties,", t, "towns (fallback)");
+    return merged;
+  };
 
   return (
-    <main style={{ maxWidth: 800, margin: "2rem auto", padding: "1rem" }}>
-      <h1 style={{ marginBottom: 12 }}>StreetSage</h1>
-      <p style={{ marginBottom: 24 }}>
-        Pick a county and town to see available estates.
+    <>
+      <h1 className="page-title">Discover estates across Ireland</h1>
+      <p className="page-sub">
+        Read and share honest reviews — choose a <strong>County</strong>, then <strong>Town/Region</strong>, then <strong>Estate/Area</strong>.
       </p>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <label htmlFor="county">County</label>
-        <select
-          id="county"
-          value={county}
-          onChange={(e) => {
-            setCounty(e.target.value);
-            setTown(""); // reset town when county changes
-          }}
-        >
-          <option value="">All counties</option>
-          {counties.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-
-        <label htmlFor="town" style={{ marginLeft: 8 }}>
-          Town
-        </label>
-        <select
-          id="town"
-          value={town}
-          onChange={(e) => setTown(e.target.value)}
-          disabled={!counties.length}
-        >
-          <option value="">All towns</option>
-          {towns.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div style={{ marginTop: 24 }}>
-        <strong>Estates</strong>
-        {loading && <p style={{ marginTop: 8 }}>Loading…</p>}
-        {error && (
-          <p style={{ marginTop: 8, color: "crimson" }}>
-            {error}
-          </p>
-        )}
-        {!loading && !error && (
-          <ul style={{ marginTop: 8 }}>
-            {estates.length ? (
-              estates.map((e) => <li key={e}>{e}</li>)
-            ) : (
-              <li>No estates found for this selection.</li>
-            )}
-          </ul>
-        )}
-      </div>
-    </main>
+      <CascadingSearch
+        fetchData={fetchData}
+        onNavigate={(path) => router.push(path)}
+      />
+    </>
   );
 }
