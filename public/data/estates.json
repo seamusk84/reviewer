@@ -1,0 +1,7 @@
+[
+  { "county": "Kildare", "town": "Celbridge", "estate": "The Grove" },
+  { "county": "Kildare", "town": "Celbridge", "estate": "Primrose Gate" },
+  { "county": "Kildare", "town": "Leixlip",  "estate": "Riverforest" },
+  { "county": "Galway",  "town": "Kinvara",  "estate": "Gleann Cora" },
+  { "county": "Kerry",   "town": "Listowel", "estate": "Clieveragh" }
+]
