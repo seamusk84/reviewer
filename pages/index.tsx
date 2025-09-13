@@ -2,26 +2,22 @@
 import Head from "next/head";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-/** ──────────────────────────────────────────────────────────────────────────
- *  CSV candidates (served from /public)
- *  Put your preferred source first.
- *  ────────────────────────────────────────────────────────────────────────── */
+/** CSV sources (served from /public). Put your preferred source first. */
 const CSV_CANDIDATES = [
-  "/data/places.csv",                 // your screenshot shows this exists
-  "/data/SAPS_2022_BUA_270923.csv",  // your previous file name
+  "/data/places.csv",
+  "/data/SAPS_2022_BUA_270923.csv",
   "/data/cso_bua_2022.csv",
   "/data/estates.csv",
 ];
 
-/** A tiny CSV parser (no external deps). Handles basic CSV with quoted values. */
+/* -------------------- CSV parsing (no external deps) -------------------- */
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  // drop leading/trailing empty lines
   while (lines.length && !lines[0].trim()) lines.shift();
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
   if (lines.length === 0) return [];
   const header = splitCSVLine(lines[0]).map((h) => h.replace(/^\uFEFF/, "").trim());
-  if (header.length <= 1) return []; // not a real CSV header (e.g., just "1")
+  if (header.length <= 1) return [];
   const rows: Record<string, string>[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCSVLine(lines[i]);
@@ -32,13 +28,10 @@ function parseCSV(text: string): Record<string, string>[] {
   }
   return rows;
 }
-
-/** Split a CSV line respecting quotes. */
 function splitCSVLine(line: string): string[] {
   const out: string[] = [];
   let cur = "";
   let inQuotes = false;
-
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
@@ -58,10 +51,7 @@ function splitCSVLine(line: string): string[] {
   out.push(cur);
   return out;
 }
-
-/** Pick the first non-empty column value from a row given possible header names. */
 function pick(row: Record<string, string>, names: string[]): string | undefined {
-  // make a lowercase-key map for robust matching
   const low: Record<string, string> = {};
   for (const k of Object.keys(row)) low[k.trim().toLowerCase()] = row[k];
   for (const n of names) {
@@ -71,20 +61,16 @@ function pick(row: Record<string, string>, names: string[]): string | undefined 
   return undefined;
 }
 
-// Column name variants commonly seen in your files
-const COUNTY_COLS = [
-  "county", "county name", "countyname", "COUNTY",
-];
-const TOWN_COLS = [
-  "settlement", "settlement name", "town", "town name", "region", "place_name", "SETTLEMENT",
-];
+/* -------------------- Column variants you use -------------------- */
+const COUNTY_COLS = ["county", "county name", "countyname", "COUNTY"];
+const TOWN_COLS = ["settlement", "settlement name", "town", "town name", "region", "place_name", "SETTLEMENT"];
 const ESTATE_COLS = [
   "estate", "small area", "small area name", "sa name", "townland", "locality", "area", "estate/area", "place", "SMALL_AREA", "TOWNLAND",
 ];
 
 type Row = { county: string; town: string; estate?: string };
 
-/** Reusable filterable select (value ≠ query; caret opens full list). */
+/* -------------------- Pretty, filterable select -------------------- */
 function FilterSelect(props: {
   label: string;
   options: string[];
@@ -92,12 +78,13 @@ function FilterSelect(props: {
   onChange: (v: string) => void;
   placeholder?: string;
   disabled?: boolean;
-  minWidth?: number;
 }) {
-  const { label, options, value, onChange, placeholder = "Start typing…", disabled, minWidth = 320 } = props;
+  const { label, options, value, onChange, placeholder = "Start typing…", disabled } = props;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [menuW, setMenuW] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -106,6 +93,14 @@ function FilterSelect(props: {
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  useEffect(() => {
+    if (!wrapRef.current) return;
+    const obs = new ResizeObserver(() => setMenuW(wrapRef.current!.getBoundingClientRect().width));
+    obs.observe(wrapRef.current);
+    setMenuW(wrapRef.current.getBoundingClientRect().width);
+    return () => obs.disconnect();
   }, []);
 
   const filtered = useMemo(() => {
@@ -119,10 +114,21 @@ function FilterSelect(props: {
     setOpen(true);
   };
 
+  const inputBase = {
+    width: "100%",
+    padding: "12px 42px 12px 14px",
+    borderRadius: 12,
+    border: "1px solid #e7e4f3",
+    background: "#fbfaff",
+    outline: "none",
+    fontSize: 15,
+    color: "#1f1b2d",
+  } as const;
+
   return (
-    <div ref={rootRef} style={{ position: "relative", minWidth }}>
-      <label style={{ display: "block", marginBottom: 6 }}>{label}</label>
-      <div style={{ position: "relative" }}>
+    <div ref={rootRef} style={{ position: "relative", minWidth: 0 }}>
+      <label style={{ display: "block", marginBottom: 8, color: "#3b3355", fontWeight: 700 }}>{label}</label>
+      <div ref={wrapRef} style={{ position: "relative" }}>
         <input
           type="text"
           disabled={disabled}
@@ -132,28 +138,32 @@ function FilterSelect(props: {
             setQuery(e.target.value);
             if (!open) setOpen(true);
           }}
-          onFocus={() => {
-            if (!disabled) openList();
-          }}
+          onFocus={() => !disabled && openList()}
           autoComplete="off"
-          style={{ width: "100%", paddingRight: 36 }}
+          style={{
+            ...inputBase,
+            cursor: disabled ? "not-allowed" : "text",
+            borderColor: open ? "#d6d0f0" : "#e7e4f3",
+            boxShadow: open ? "0 0 0 6px rgba(136, 79, 255, 0.08)" : "none",
+          }}
         />
         <button
           type="button"
           aria-label={open ? "Hide options" : "Show all options"}
           disabled={disabled}
-          onClick={() => {
-            if (open) setOpen(false);
-            else openList();
-          }}
+          onClick={() => (open ? setOpen(false) : openList())}
           style={{
             position: "absolute",
-            right: 6,
-            top: 6,
-            border: "none",
-            background: "transparent",
+            right: 8,
+            top: 8,
+            height: 30,
+            width: 30,
+            borderRadius: 10,
+            border: "1px solid #e7e4f3",
+            background: "#fff",
             cursor: disabled ? "not-allowed" : "pointer",
-            padding: 6,
+            fontSize: 14,
+            color: "#544a78",
           }}
         >
           ▾
@@ -164,22 +174,22 @@ function FilterSelect(props: {
         <ul
           style={{
             position: "absolute",
-            zIndex: 20,
-            marginTop: 4,
-            maxHeight: 240,
+            zIndex: 30,
+            marginTop: 8,
+            maxHeight: 300,
             overflowY: "auto",
-            width: "100%",
+            width: menuW ?? "100%",
             background: "white",
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+            border: "1px solid #ece8f8",
+            borderRadius: 14,
+            boxShadow: "0 24px 48px rgba(27, 16, 73, 0.12)",
             listStyle: "none",
-            padding: 0,
+            padding: 8,
           }}
         >
           {filtered.length ? (
             filtered.map((opt) => (
-              <li key={opt}>
+              <li key={opt} style={{ margin: 2 }}>
                 <button
                   type="button"
                   onClick={() => {
@@ -191,19 +201,24 @@ function FilterSelect(props: {
                     display: "block",
                     width: "100%",
                     textAlign: "left",
-                    padding: "8px 12px",
-                    background: "white",
+                    padding: "10px 12px",
+                    background: "transparent",
                     border: "none",
+                    borderRadius: 10,
                     cursor: "pointer",
+                    fontSize: 14,
+                    color: "#231f36",
                   }}
                   onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={(e) => ((e.currentTarget.style.backgroundColor = "#f6f3ff"))}
+                  onMouseLeave={(e) => ((e.currentTarget.style.backgroundColor = "transparent"))}
                 >
                   {opt}
                 </button>
               </li>
             ))
           ) : (
-            <li style={{ padding: "8px 12px", color: "#666" }}>No matches</li>
+            <li style={{ padding: "10px 12px", color: "#7c7692", fontSize: 14 }}>No matches</li>
           )}
         </ul>
       )}
@@ -211,6 +226,7 @@ function FilterSelect(props: {
   );
 }
 
+/* -------------------- Page -------------------- */
 export default function Home() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,15 +244,13 @@ export default function Home() {
         setError(null);
 
         let text = "";
-        let source = "";
         for (const url of CSV_CANDIDATES) {
           const res = await fetch(url, { cache: "no-store" });
           if (!res.ok) continue;
           const t = await res.text();
-          const parsedTest = parseCSV(t);
-          if (parsedTest.length > 0) {
+          const quick = parseCSV(t);
+          if (quick.length > 0) {
             text = t;
-            source = url;
             break;
           }
         }
@@ -260,10 +274,7 @@ export default function Home() {
           return true;
         });
 
-        if (!cancelled) {
-          setRows(uniq);
-          console.log(`Loaded ${uniq.length} rows from`, source);
-        }
+        if (!cancelled) setRows(uniq);
       } catch (e: any) {
         console.error(e);
         if (!cancelled) setError(e?.message || "Failed to load data");
@@ -281,33 +292,34 @@ export default function Home() {
     () => Array.from(new Set(rows.map((r) => r.county))).sort(),
     [rows]
   );
-
   const towns = useMemo(
     () =>
       Array.from(
         new Set(
-          rows
-            .filter((r) => !county || r.county === county)
-            .map((r) => r.town)
+          rows.filter((r) => !county || r.county === county).map((r) => r.town)
         )
       ).sort(),
     [rows, county]
   );
-
   const estates = useMemo(
     () =>
       Array.from(
         new Set(
           rows
-            .filter(
-              (r) => (!county || r.county === county) && (!town || r.town === town)
-            )
+            .filter((r) => (!county || r.county === county) && (!town || r.town === town))
             .map((r) => r.estate)
             .filter(Boolean) as string[]
         )
       ).sort(),
     [rows, county, town]
   );
+
+  const stats = useMemo(() => {
+    const townCount = towns.length;
+    const estateCount = estates.length;
+    const totalRows = rows.length;
+    return { townCount, estateCount, totalRows };
+  }, [towns.length, estates.length, rows.length]);
 
   return (
     <>
@@ -316,33 +328,72 @@ export default function Home() {
         <meta name="description" content="Local Views, True Reviews" />
       </Head>
 
-      <main style={{ maxWidth: 960, margin: "2rem auto", padding: "0 1rem" }}>
-        <h1 style={{ marginBottom: 8 }}>Find your estate</h1>
-        <p style={{ marginBottom: 24 }}>
-          Drill down by <strong>County</strong> → <strong>Town/Region</strong> → <strong>Estate/Area</strong>.
-        </p>
+      {/* Background layer */}
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background:
+            "radial-gradient(1200px 600px at 10% -10%, #efeaff 10%, transparent 60%), radial-gradient(800px 400px at 100% 0%, #f7f3ff 10%, transparent 60%), #f7f7fb",
+          zIndex: -1,
+        }}
+      />
 
-        <div
+      <main style={{ maxWidth: 1120, margin: "2.4rem auto 3.2rem", padding: "0 1rem" }}>
+        {/* Hero */}
+        <section style={{ marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+            <div
+              aria-hidden
+              style={{
+                height: 36,
+                width: 36,
+                borderRadius: 12,
+                background: "linear-gradient(140deg, #8b5cf6, #a78bfa)",
+                display: "grid",
+                placeItems: "center",
+                color: "white",
+                boxShadow: "0 6px 14px rgba(139, 92, 246, 0.35)",
+                fontSize: 18,
+              }}
+            >
+              🏠
+            </div>
+            <h1 style={{ fontSize: 34, lineHeight: 1.2, margin: 0, letterSpacing: 0.2 }}>Find your estate</h1>
+          </div>
+          <p style={{ color: "#4a4560", margin: 0 }}>
+            Drill down by <strong>County</strong> → <strong>Town/Region</strong> → <strong>Estate/Area</strong>.
+          </p>
+        </section>
+
+        {/* Card */}
+        <section
           style={{
-            background: "white",
-            borderRadius: 12,
-            border: "1px solid #e8e6ef",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
-            padding: 24,
+            background: "linear-gradient(180deg, #ffffff 0%, #fefcff 100%)",
+            borderRadius: 18,
+            border: "1px solid #eeeafc",
+            boxShadow: "0 14px 36px rgba(31, 22, 78, 0.08)",
+            padding: 22,
           }}
         >
-          {loading && <p>Loading data…</p>}
+          {loading && <p style={{ margin: 0 }}>Loading data…</p>}
           {error && (
-            <p style={{ color: "crimson" }}>
+            <p style={{ color: "crimson", margin: 0 }}>
               {error}
               <br />
-              <small>Check that one of the CSVs exists in <code>/public/data</code> and has real rows.</small>
+              <small>Ensure a CSV with county/town (and optionally estate) exists under <code>/public/data</code>.</small>
             </p>
           )}
 
           {!loading && !error && (
             <>
-              <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr 1fr 1fr" }}>
+              {/* Responsive grid: 1 → 2 → 3 columns */}
+              <style>{`
+                @media (min-width: 740px) { .grid-areas { grid-template-columns: 1fr 1fr; } }
+                @media (min-width: 980px) { .grid-areas { grid-template-columns: 1fr 1fr 1fr; } }
+              `}</style>
+
+              <div className="grid-areas" style={{ display: "grid", gap: 18, gridTemplateColumns: "1fr" }}>
                 <FilterSelect
                   label="County"
                   options={counties}
@@ -354,7 +405,6 @@ export default function Home() {
                   }}
                   placeholder="Start typing a county…"
                 />
-
                 <FilterSelect
                   label="Town / Region"
                   options={towns}
@@ -366,7 +416,6 @@ export default function Home() {
                   placeholder="Start typing a town…"
                   disabled={!county}
                 />
-
                 <FilterSelect
                   label="Estate / Area"
                   options={estates}
@@ -377,18 +426,20 @@ export default function Home() {
                 />
               </div>
 
-              <div style={{ marginTop: 16 }}>
+              {/* Action + helper */}
+              <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <button
                   type="button"
                   style={{
-                    padding: "10px 16px",
-                    borderRadius: 8,
-                    border: "1px solid #d7d4e5",
-                    background: "#f5f3ff",
-                    cursor: "pointer",
+                    padding: "12px 18px",
+                    borderRadius: 12,
+                    border: "1px solid #e2def2",
+                    background: "linear-gradient(180deg, #f6f3ff, #efe9ff)",
+                    cursor: county ? "pointer" : "not-allowed",
+                    fontWeight: 700,
                   }}
                   onClick={() => {
-                    console.log({ county, town, estate });
+                    // Hook up to your navigation/search later
                     alert(
                       `Search:\nCounty: ${county || "(any)"}\nTown: ${town || "(any)"}\nEstate: ${estate || "(any)"}`
                     );
@@ -397,13 +448,35 @@ export default function Home() {
                 >
                   Search
                 </button>
-                <span style={{ marginLeft: 12, color: "#6b677a" }}>
+                <span style={{ color: "#6b677a" }}>
                   Tip: choose <em>All Areas</em> to review the whole town.
                 </span>
               </div>
+
+              {/* Tiny stats row */}
+              <div
+                style={{
+                  marginTop: 16,
+                  display: "flex",
+                  gap: 16,
+                  color: "#5a5474",
+                  fontSize: 13,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span>Counties loaded: <strong>{counties.length}</strong></span>
+                <span>Available towns: <strong>{stats.townCount}</strong></span>
+                <span>Available estates: <strong>{stats.estateCount}</strong></span>
+                <span>Total records: <strong>{stats.totalRows}</strong></span>
+              </div>
             </>
           )}
-        </div>
+        </section>
+
+        {/* Footer */}
+        <footer style={{ marginTop: 28, textAlign: "center", color: "#726c8a", fontSize: 13 }}>
+          Local Views, <strong>True Reviews</strong> · StreetSage
+        </footer>
       </main>
     </>
   );
