@@ -233,7 +233,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const [county, setCounty] = useState("");
-  const [town, setTown] = useState("");
+  const [region, setRegion] = useState(""); // renamed (was town)
   const [estate, setEstate] = useState("");
 
   useEffect(() => {
@@ -260,7 +260,7 @@ export default function Home() {
         const mapped: Row[] = raw
           .map((r) => {
             const c = pick(r, COUNTY_COLS) || "";
-            const t = pick(r, TOWN_COLS) || "";
+            const t = pick(r, TOWN_COLS) || "";      // we still read “town/settlement” from CSV
             const e = pick(r, ESTATE_COLS);
             return { county: c, town: t, estate: e };
           })
@@ -288,16 +288,15 @@ export default function Home() {
     };
   }, []);
 
+  // Derived option lists
   const counties = useMemo(
     () => Array.from(new Set(rows.map((r) => r.county))).sort(),
     [rows]
   );
-  const towns = useMemo(
+  const regions = useMemo(
     () =>
       Array.from(
-        new Set(
-          rows.filter((r) => !county || r.county === county).map((r) => r.town)
-        )
+        new Set(rows.filter((r) => !county || r.county === county).map((r) => r.town))
       ).sort(),
     [rows, county]
   );
@@ -306,20 +305,20 @@ export default function Home() {
       Array.from(
         new Set(
           rows
-            .filter((r) => (!county || r.county === county) && (!town || r.town === town))
+            .filter((r) => (!county || r.county === county) && (!region || r.town === region))
             .map((r) => r.estate)
             .filter(Boolean) as string[]
         )
       ).sort(),
-    [rows, county, town]
+    [rows, county, region]
   );
 
   const stats = useMemo(() => {
-    const townCount = towns.length;
+    const regionCount = regions.length;
     const estateCount = estates.length;
     const totalRows = rows.length;
-    return { townCount, estateCount, totalRows };
-  }, [towns.length, estates.length, rows.length]);
+    return { regionCount, estateCount, totalRows };
+  }, [regions.length, estates.length, rows.length]);
 
   return (
     <>
@@ -359,10 +358,12 @@ export default function Home() {
             >
               🏠
             </div>
-            <h1 style={{ fontSize: 34, lineHeight: 1.2, margin: 0, letterSpacing: 0.2 }}>Find your estate</h1>
+            <h1 style={{ fontSize: 34, lineHeight: 1.2, margin: 0, letterSpacing: 0.2 }}>
+              Rate and See Towns and Estates nationwide
+            </h1>
           </div>
           <p style={{ color: "#4a4560", margin: 0 }}>
-            Drill down by <strong>County</strong> → <strong>Town/Region</strong> → <strong>Estate/Area</strong>.
+            Drill down by <strong>County</strong> → <strong>Region</strong> → <strong>Estate / Town</strong>.
           </p>
         </section>
 
@@ -381,7 +382,7 @@ export default function Home() {
             <p style={{ color: "crimson", margin: 0 }}>
               {error}
               <br />
-              <small>Ensure a CSV with county/town (and optionally estate) exists under <code>/public/data</code>.</small>
+              <small>Ensure a CSV with county/region (town/settlement) and optionally estate exists under <code>/public/data</code>.</small>
             </p>
           )}
 
@@ -400,29 +401,29 @@ export default function Home() {
                   value={county}
                   onChange={(val) => {
                     setCounty(val);
-                    setTown("");
+                    setRegion("");
                     setEstate("");
                   }}
                   placeholder="Start typing a county…"
                 />
                 <FilterSelect
-                  label="Town / Region"
-                  options={towns}
-                  value={town}
+                  label="Region"
+                  options={regions}
+                  value={region}
                   onChange={(val) => {
-                    setTown(val);
+                    setRegion(val);
                     setEstate("");
                   }}
-                  placeholder="Start typing a town…"
+                  placeholder="Start typing a region…"
                   disabled={!county}
                 />
                 <FilterSelect
-                  label="Estate / Area"
+                  label="Estate / Town"
                   options={estates}
                   value={estate}
                   onChange={setEstate}
-                  placeholder="Select an estate/area…"
-                  disabled={!town}
+                  placeholder="Select an estate or town…"
+                  disabled={!region}
                 />
               </div>
 
@@ -441,7 +442,7 @@ export default function Home() {
                   onClick={() => {
                     // Hook up to your navigation/search later
                     alert(
-                      `Search:\nCounty: ${county || "(any)"}\nTown: ${town || "(any)"}\nEstate: ${estate || "(any)"}`
+                      `Search:\nCounty: ${county || "(any)"}\nRegion: ${region || "(any)"}\nEstate/Town: ${estate || "(any)"}`
                     );
                   }}
                   disabled={!county}
@@ -449,7 +450,7 @@ export default function Home() {
                   Search
                 </button>
                 <span style={{ color: "#6b677a" }}>
-                  Tip: choose <em>All Areas</em> to review the whole town.
+                  Tip: choose <em>All Areas</em> to review the whole region.
                 </span>
               </div>
 
@@ -465,8 +466,8 @@ export default function Home() {
                 }}
               >
                 <span>Counties loaded: <strong>{counties.length}</strong></span>
-                <span>Available towns: <strong>{stats.townCount}</strong></span>
-                <span>Available estates: <strong>{stats.estateCount}</strong></span>
+                <span>Available regions: <strong>{stats.regionCount}</strong></span>
+                <span>Available estates/towns: <strong>{stats.estateCount}</strong></span>
                 <span>Total records: <strong>{stats.totalRows}</strong></span>
               </div>
             </>
