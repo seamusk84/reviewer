@@ -3,23 +3,29 @@ import Head from "next/head";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 /** ──────────────────────────────────────────────────────────────────────────
- *  CONFIG: CSV location (served from /public)
- *  If your file is named differently, update CSV_PATH accordingly.
- *  Examples:
- *   "/data/SAPS_2022_BUA_270923.csv"  or  "/data/cso_bua_2022.csv"
+ *  CSV candidates (served from /public)
+ *  Put your preferred source first.
  *  ────────────────────────────────────────────────────────────────────────── */
-const CSV_PATH = "/data/cso_bua_2022.csv"; // change if your working file has a different name
+const CSV_CANDIDATES = [
+  "/data/places.csv",                 // your screenshot shows this exists
+  "/data/SAPS_2022_BUA_270923.csv",  // your previous file name
+  "/data/cso_bua_2022.csv",
+  "/data/estates.csv",
+];
 
 /** A tiny CSV parser (no external deps). Handles basic CSV with quoted values. */
 function parseCSV(text: string): Record<string, string>[] {
-  // Normalize newlines
-  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter(Boolean);
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  // drop leading/trailing empty lines
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
   if (lines.length === 0) return [];
   const header = splitCSVLine(lines[0]).map((h) => h.replace(/^\uFEFF/, "").trim());
+  if (header.length <= 1) return []; // not a real CSV header (e.g., just "1")
   const rows: Record<string, string>[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCSVLine(lines[i]);
-    if (cols.length === 1 && cols[0] === "") continue;
+    if (cols.length === 1 && cols[0].trim() === "") continue;
     const row: Record<string, string> = {};
     header.forEach((key, idx) => (row[key] = (cols[idx] ?? "").trim()));
     rows.push(row);
@@ -37,7 +43,6 @@ function splitCSVLine(line: string): string[] {
     const ch = line[i];
     if (ch === '"') {
       if (inQuotes && line[i + 1] === '"') {
-        // Escaped quote ("")
         cur += '"';
         i++;
       } else {
@@ -54,27 +59,27 @@ function splitCSVLine(line: string): string[] {
   return out;
 }
 
-/** Pick the first non-empty column value from a row given a list of possible header names. */
-function pick(row: Record<string, string>, headers: string[]): string | undefined {
-  for (const h of headers) {
-    const k = Object.keys(row).find((x) => x.trim().toLowerCase() === h.trim().toLowerCase());
-    if (k && row[k] && row[k].trim()) return row[k].trim();
+/** Pick the first non-empty column value from a row given possible header names. */
+function pick(row: Record<string, string>, names: string[]): string | undefined {
+  // make a lowercase-key map for robust matching
+  const low: Record<string, string> = {};
+  for (const k of Object.keys(row)) low[k.trim().toLowerCase()] = row[k];
+  for (const n of names) {
+    const v = low[n.trim().toLowerCase()];
+    if (v && v.trim()) return v.trim();
   }
   return undefined;
 }
 
-// Column name variants commonly seen in CSO files:
-const COUNTY_COLS = ["County", "County Name", "CountyName", "COUNTY"];
-const TOWN_COLS = ["Settlement", "Settlement Name", "Town", "Town Name", "SETTLEMENT"];
+// Column name variants commonly seen in your files
+const COUNTY_COLS = [
+  "county", "county name", "countyname", "COUNTY",
+];
+const TOWN_COLS = [
+  "settlement", "settlement name", "town", "town name", "region", "place_name", "SETTLEMENT",
+];
 const ESTATE_COLS = [
-  "Estate",
-  "Small Area",
-  "Small Area Name",
-  "SA Name",
-  "Townland",
-  "Locality",
-  "SMALL_AREA",
-  "TOWNLAND",
+  "estate", "small area", "small area name", "sa name", "townland", "locality", "area", "estate/area", "place", "SMALL_AREA", "TOWNLAND",
 ];
 
 type Row = { county: string; town: string; estate?: string };
@@ -139,7 +144,7 @@ function FilterSelect(props: {
           disabled={disabled}
           onClick={() => {
             if (open) setOpen(false);
-            else openList(); // opening clears filter so full list shows
+            else openList();
           }}
           style={{
             position: "absolute",
@@ -222,22 +227,22 @@ export default function Home() {
         setLoading(true);
         setError(null);
 
-        // Try primary path. If it 404s, fall back to a common previous name.
-        const candidates = [CSV_PATH, "/data/SAPS_2022_BUA_270923.csv"];
         let text = "";
-        let ok = false;
-        for (const url of candidates) {
+        let source = "";
+        for (const url of CSV_CANDIDATES) {
           const res = await fetch(url, { cache: "no-store" });
-          if (res.ok) {
-            text = await res.text();
-            ok = true;
+          if (!res.ok) continue;
+          const t = await res.text();
+          const parsedTest = parseCSV(t);
+          if (parsedTest.length > 0) {
+            text = t;
+            source = url;
             break;
           }
         }
-        if (!ok) throw new Error(`CSV not found at ${candidates.join(" or ")}`);
+        if (!text) throw new Error(`No usable CSV found at: ${CSV_CANDIDATES.join(", ")}`);
 
         const raw = parseCSV(text);
-        // Map to our normalized Row shape
         const mapped: Row[] = raw
           .map((r) => {
             const c = pick(r, COUNTY_COLS) || "";
@@ -245,9 +250,8 @@ export default function Home() {
             const e = pick(r, ESTATE_COLS);
             return { county: c, town: t, estate: e };
           })
-          .filter((r) => r.county && r.town); // at least county + town
+          .filter((r) => r.county && r.town);
 
-        // De-duplicate exact rows
         const seen = new Set<string>();
         const uniq = mapped.filter((r) => {
           const key = `${r.county}||${r.town}||${r.estate ?? ""}`.toLowerCase();
@@ -256,7 +260,10 @@ export default function Home() {
           return true;
         });
 
-        if (!cancelled) setRows(uniq);
+        if (!cancelled) {
+          setRows(uniq);
+          console.log(`Loaded ${uniq.length} rows from`, source);
+        }
       } catch (e: any) {
         console.error(e);
         if (!cancelled) setError(e?.message || "Failed to load data");
@@ -309,8 +316,6 @@ export default function Home() {
         <meta name="description" content="Local Views, True Reviews" />
       </Head>
 
-      {/* Keep your global header/layout outside of this page.
-          This page only renders the form content. */}
       <main style={{ maxWidth: 960, margin: "2rem auto", padding: "0 1rem" }}>
         <h1 style={{ marginBottom: 8 }}>Find your estate</h1>
         <p style={{ marginBottom: 24 }}>
@@ -331,72 +336,73 @@ export default function Home() {
             <p style={{ color: "crimson" }}>
               {error}
               <br />
-              <small>Check the CSV path in <code>CSV_PATH</code> and that the file contains real data.</small>
+              <small>Check that one of the CSVs exists in <code>/public/data</code> and has real rows.</small>
             </p>
           )}
 
           {!loading && !error && (
-            <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr 1fr 1fr" }}>
-              <FilterSelect
-                label="County"
-                options={counties}
-                value={county}
-                onChange={(val) => {
-                  setCounty(val);
-                  setTown("");
-                  setEstate("");
-                }}
-                placeholder="Start typing a county…"
-              />
+            <>
+              <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr 1fr 1fr" }}>
+                <FilterSelect
+                  label="County"
+                  options={counties}
+                  value={county}
+                  onChange={(val) => {
+                    setCounty(val);
+                    setTown("");
+                    setEstate("");
+                  }}
+                  placeholder="Start typing a county…"
+                />
 
-              <FilterSelect
-                label="Town / Region"
-                options={towns}
-                value={town}
-                onChange={(val) => {
-                  setTown(val);
-                  setEstate("");
-                }}
-                placeholder="Start typing a town…"
-                disabled={!county}
-              />
+                <FilterSelect
+                  label="Town / Region"
+                  options={towns}
+                  value={town}
+                  onChange={(val) => {
+                    setTown(val);
+                    setEstate("");
+                  }}
+                  placeholder="Start typing a town…"
+                  disabled={!county}
+                />
 
-              <FilterSelect
-                label="Estate / Area"
-                options={estates}
-                value={estate}
-                onChange={setEstate}
-                placeholder="Select an estate/area…"
-                disabled={!town}
-              />
-            </div>
+                <FilterSelect
+                  label="Estate / Area"
+                  options={estates}
+                  value={estate}
+                  onChange={setEstate}
+                  placeholder="Select an estate/area…"
+                  disabled={!town}
+                />
+              </div>
+
+              <div style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 8,
+                    border: "1px solid #d7d4e5",
+                    background: "#f5f3ff",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    console.log({ county, town, estate });
+                    alert(
+                      `Search:\nCounty: ${county || "(any)"}\nTown: ${town || "(any)"}\nEstate: ${estate || "(any)"}`
+                    );
+                  }}
+                  disabled={!county}
+                >
+                  Search
+                </button>
+                <span style={{ marginLeft: 12, color: "#6b677a" }}>
+                  Tip: choose <em>All Areas</em> to review the whole town.
+                </span>
+              </div>
+            </>
           )}
-
-          <div style={{ marginTop: 16 }}>
-            <button
-              type="button"
-              style={{
-                padding: "10px 16px",
-                borderRadius: 8,
-                border: "1px solid #d7d4e5",
-                background: "#f5f3ff",
-                cursor: "pointer",
-              }}
-              onClick={() => {
-                // Hook up to your navigation / search action as needed
-                console.log({ county, town, estate });
-                alert(
-                  `Search:\nCounty: ${county || "(any)"}\nTown: ${town || "(any)"}\nEstate: ${estate || "(any)"}`
-                );
-              }}
-              disabled={!county}
-            >
-              Search
-            </button>
-            <span style={{ marginLeft: 12, color: "#6b677a" }}>
-              Tip: choose <em>All Areas</em> to review the whole town.
-            </span>
-          </div>
         </div>
       </main>
     </>
