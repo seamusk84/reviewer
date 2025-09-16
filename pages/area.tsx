@@ -67,16 +67,57 @@ const ESTATE_COLS = [
 
 type Row = { county: string; town: string; estate?: string };
 
+/* -------------------- Local review storage (no backend) -------------------- */
+type Review = {
+  id: string;
+  createdAt: number;
+  rating: number; // 1..5
+  title: string;
+  body: string;
+  user?: string; // optional display name
+};
+
+const LS_KEY = "streetsage_reviews_v1";
+
+function makeKey(county: string, region: string, estate: string) {
+  // "All Areas" is allowed to represent the whole region
+  return `${county}||${region}||${estate || "All Areas"}`.toLowerCase();
+}
+
+function loadAll(): Record<string, Review[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch {}
+  return {};
+}
+function saveAll(map: Record<string, Review[]>) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+/* -------------------- Page -------------------- */
 export default function AreaPage() {
   const { query, replace } = useRouter();
   const county = (query.county as string) || "";
   const region = (query.region as string) || "";
-  const estate = (query.estate as string) || ""; // optional
+  const estate = (query.estate as string) || ""; // optional; may be "All Areas"
 
+  // CSV rows for building the estate list when no specific estate chosen
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Reviews in localStorage
+  const [reviewMap, setReviewMap] = useState<Record<string, Review[]>>({});
+  const currentKey = makeKey(county, region, estate);
+
+  // Load CSV
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -115,6 +156,11 @@ export default function AreaPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // Load reviews from localStorage on mount
+  useEffect(() => {
+    setReviewMap(loadAll());
+  }, []);
+
   const estatesInRegion = useMemo(
     () =>
       Array.from(
@@ -133,10 +179,12 @@ export default function AreaPage() {
     [rows, county, region]
   );
 
-  // ✅ Only validate/remove the estate AFTER loading (fixes your issue)
+  // Only sanity-check the estate AFTER loading CSV
   useEffect(() => {
-    if (loading) return; // wait until we have data
-    if (!estate) return;
+    if (loading) return;
+    if (!estate) return; // list mode
+    // Allow "All Areas" even if not in CSV
+    if (estate.toLowerCase() === "all areas") return;
     if (!estatesInRegion.includes(estate)) {
       const q: Record<string, string> = {};
       if (county) q.county = county;
@@ -145,27 +193,85 @@ export default function AreaPage() {
     }
   }, [loading, estate, estatesInRegion, county, region, replace]);
 
-  const hasSpecificEstate = !!estate && estatesInRegion.includes(estate);
+  const hasSpecificEstate =
+    !!estate &&
+    (estate.toLowerCase() === "all areas" || estatesInRegion.includes(estate));
+
+  // Current reviews
+  const reviews = (reviewMap[currentKey] || []).slice().sort((a, b) => b.createdAt - a.createdAt);
+  const avgRating =
+    reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
+
+  // Form state
+  const [rating, setRating] = useState(0);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [user, setUser] = useState("");
+
+  function addReview() {
+    if (!rating || !title.trim() || !body.trim()) {
+      alert("Please provide a rating, a short title, and your thoughts.");
+      return;
+    }
+    const newReview: Review = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: Date.now(),
+      rating,
+      title: title.trim(),
+      body: body.trim(),
+      user: user.trim() || undefined,
+    };
+    const next = { ...reviewMap, [currentKey]: [...(reviewMap[currentKey] || []), newReview] };
+    setReviewMap(next);
+    saveAll(next);
+    // Reset form
+    setRating(0);
+    setTitle("");
+    setBody("");
+    setUser("");
+  }
+
+  function Stars({ value }: { value: number }) {
+    const n = Math.round(value);
+    return (
+      <span aria-label={`${n} out of 5`} title={`${n}/5`}>
+        {"★★★★★".slice(0, n)}
+        <span style={{ color: "#cfc8e8" }}>{"★★★★★".slice(n)}</span>
+      </span>
+    );
+  }
 
   return (
     <>
       <Head>
-        <title>{hasSpecificEstate ? `${estate} – StreetSage` : `${region || county} – StreetSage`}</title>
+        <title>
+          {hasSpecificEstate ? `${estate} – StreetSage` : `${region || county} – StreetSage`}
+        </title>
       </Head>
 
       <main style={{ maxWidth: 1100, margin: "2rem auto", padding: "0 1rem" }}>
         <nav style={{ fontSize: 13, color: "#6c6788", marginBottom: 8 }}>
-          <span>Home</span> · <span>{county || "All counties"}</span> · <span>{region || "All regions"}</span>
-          {hasSpecificEstate ? <> · <strong>{estate}</strong></> : null}
+          <span>Home</span> · <span>{county || "All counties"}</span> ·{" "}
+          <span>{region || "All regions"}</span>
+          {hasSpecificEstate ? (
+            <>
+              {" "}
+              · <strong>{estate}</strong>
+            </>
+          ) : null}
         </nav>
 
         <h1 style={{ margin: "0 0 6px" }}>
           {hasSpecificEstate ? estate : region || county || "Browse areas"}
         </h1>
         <p style={{ marginTop: 0, color: "#4a4560" }}>
-          {hasSpecificEstate
-            ? <>County: <strong>{county}</strong> · Region: <strong>{region}</strong></>
-            : "Choose an estate to read and write reviews."}
+          {hasSpecificEstate ? (
+            <>
+              County: <strong>{county}</strong> · Region: <strong>{region}</strong>
+            </>
+          ) : (
+            "Choose an estate to read and write reviews."
+          )}
         </p>
 
         {loading && <p>Loading…</p>}
@@ -175,9 +281,44 @@ export default function AreaPage() {
           <>
             {!hasSpecificEstate ? (
               estatesInRegion.length ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12, marginTop: 16 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                    gap: 12,
+                    marginTop: 16,
+                  }}
+                >
+                  {/* Special "All Areas" card */}
+                  <a
+                    key="__all"
+                    href={`/area?county=${encodeURIComponent(
+                      county
+                    )}&region=${encodeURIComponent(region)}&estate=${encodeURIComponent(
+                      "All Areas"
+                    )}`}
+                    style={{
+                      display: "block",
+                      padding: "12px 14px",
+                      background: "#fff",
+                      border: "1px solid #eeeafc",
+                      borderRadius: 12,
+                      boxShadow: "0 8px 18px rgba(31,22,78,0.06)",
+                      textDecoration: "none",
+                      color: "#2c254a",
+                      fontWeight: 600,
+                    }}
+                  >
+                    All Areas
+                    <div style={{ fontSize: 12, color: "#7a7396", marginTop: 4 }}>
+                      Open reviews
+                    </div>
+                  </a>
+
                   {estatesInRegion.map((e) => {
-                    const href = `/area?county=${encodeURIComponent(county)}&region=${encodeURIComponent(region)}&estate=${encodeURIComponent(e)}`;
+                    const href = `/area?county=${encodeURIComponent(
+                      county
+                    )}&region=${encodeURIComponent(region)}&estate=${encodeURIComponent(e)}`;
                     return (
                       <a
                         key={e}
@@ -195,15 +336,21 @@ export default function AreaPage() {
                         }}
                       >
                         {e}
-                        <div style={{ fontSize: 12, color: "#7a7396", marginTop: 4 }}>Open reviews</div>
+                        <div style={{ fontSize: 12, color: "#7a7396", marginTop: 4 }}>
+                          Open reviews
+                        </div>
                       </a>
                     );
                   })}
                 </div>
               ) : validRegion ? (
-                <p style={{ marginTop: 16 }}>No estates were found for this selection.</p>
+                <p style={{ marginTop: 16 }}>
+                  No estates were found for this selection.
+                </p>
               ) : (
-                <p style={{ marginTop: 16 }}>That region wasn’t found. Try going back and choosing a different one.</p>
+                <p style={{ marginTop: 16 }}>
+                  That region wasn’t found. Try going back and choosing a different one.
+                </p>
               )
             ) : (
               <section
@@ -216,44 +363,68 @@ export default function AreaPage() {
                   boxShadow: "0 12px 28px rgba(31,22,78,0.08)",
                 }}
               >
-                <h2 style={{ marginTop: 0 }}>Reviews</h2>
-
-                {/* Placeholder until your review backend is connected */}
+                {/* Summary */}
                 <div
                   style={{
-                    padding: 16,
-                    background: "#faf8ff",
-                    border: "1px dashed #ddd6f5",
-                    borderRadius: 12,
-                    color: "#4a4560",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    marginBottom: 10,
+                    flexWrap: "wrap",
                   }}
                 >
-                  <strong>No reviews yet.</strong> Be the first to add a review!
+                  <strong>Reviews</strong>
+                  {reviews.length > 0 && (
+                    <span style={{ color: "#6c6788" }}>
+                      <span aria-hidden>·</span> {reviews.length}{" "}
+                      {reviews.length === 1 ? "review" : "reviews"}{" "}
+                      <span aria-hidden>·</span>{" "}
+                      <span title={`${avgRating.toFixed(2)}/5`}>
+                        Avg: {avgRating.toFixed(1)} / 5
+                      </span>
+                    </span>
+                  )}
                 </div>
 
-                <div style={{ marginTop: 14 }}>
-                  <a
-                    href="#add-review"
-                    onClick={(e) => { e.preventDefault(); alert("Review form coming soon."); }}
+                {/* Empty state */}
+                {reviews.length === 0 && (
+                  <div
                     style={{
-                      display: "inline-block",
-                      padding: "10px 14px",
-                      borderRadius: 10,
-                      border: "1px solid #e2def2",
-                      background: "linear-gradient(180deg, #f6f3ff, #efe9ff)",
-                      fontWeight: 700,
-                      textDecoration: "none",
-                      color: "#2c254a",
+                      padding: 16,
+                      background: "#faf8ff",
+                      border: "1px dashed #ddd6f5",
+                      borderRadius: 12,
+                      color: "#4a4560",
+                      marginBottom: 16,
                     }}
                   >
-                    Add a review
-                  </a>
-                </div>
-              </section>
-            )}
-          </>
-        )}
-      </main>
-    </>
-  );
-}
+                    <strong>No reviews yet.</strong> Be the first to add a review!
+                  </div>
+                )}
+
+                {/* Review form */}
+                <div
+                  style={{
+                    background: "#fff",
+                    border: "1px solid #efeafc",
+                    borderRadius: 12,
+                    padding: 14,
+                    marginBottom: 16,
+                  }}
+                >
+                  <h3 style={{ marginTop: 0, marginBottom: 12 }}>Add a review</h3>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr",
+                      gap: 10,
+                      maxWidth: 680,
+                    }}
+                  >
+                    <div>
+                      <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+                        Rating
+                      </label>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {[1, 2]()
