@@ -1,6 +1,7 @@
 // pages/index.tsx
 import Head from "next/head";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/router";
 
 /** CSV sources (served from /public). Put your preferred source first. */
 const CSV_CANDIDATES = [
@@ -257,12 +258,9 @@ function NewsPanel() {
     };
   }, []);
 
-  // Rotate by 3 items at a time every 6s
   useEffect(() => {
     if (!items.length) return;
-    const t = setInterval(() => {
-      setOffset((o) => (o + 3) % items.length);
-    }, 6000);
+    const t = setInterval(() => setOffset((o) => (o + 3) % items.length), 6000);
     return () => clearInterval(t);
   }, [items.length]);
 
@@ -334,6 +332,8 @@ function NewsPanel() {
 
 /* -------------------- Page -------------------- */
 export default function Home() {
+  const router = useRouter();
+
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -418,6 +418,15 @@ export default function Home() {
       ).sort(),
     [rows, county, region]
   );
+
+  // Navigate to /search with params (no more alert)
+  function handleSearch() {
+    const query: Record<string, string> = {};
+    if (county) query.county = county;
+    if (region) query.region = region;
+    if (estate) query.estate = estate;
+    router.push({ pathname: "/search", query });
+  }
 
   return (
     <>
@@ -538,11 +547,7 @@ export default function Home() {
                     cursor: county ? "pointer" : "not-allowed",
                     fontWeight: 700,
                   }}
-                  onClick={() => {
-                    alert(
-                      `Search:\nCounty: ${county || "(any)"}\nRegion: ${region || "(any)"}\nEstate/Town: ${estate || "(any)"}`
-                    );
-                  }}
+                  onClick={handleSearch}
                   disabled={!county}
                 >
                   Search
