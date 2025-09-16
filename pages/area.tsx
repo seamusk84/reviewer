@@ -83,7 +83,6 @@ function makeKey(county: string, region: string, estate: string) {
   // "All Areas" is allowed to represent the whole region
   return `${county}||${region}||${estate || "All Areas"}`.toLowerCase();
 }
-
 function loadAll(): Record<string, Review[]> {
   if (typeof window === "undefined") return {};
   try {
@@ -108,7 +107,7 @@ export default function AreaPage() {
   const region = (query.region as string) || "";
   const estate = (query.estate as string) || ""; // optional; may be "All Areas"
 
-  // CSV rows for building the estate list when no specific estate chosen
+  // CSV rows for estate list when no specific estate chosen
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -202,17 +201,21 @@ export default function AreaPage() {
   const avgRating =
     reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
 
-  // Form state
+  // Form state (+ honeypot)
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [user, setUser] = useState("");
+  const [website, setWebsite] = useState(""); // honeypot
+  const [sending, setSending] = useState(false);
 
-  function addReview() {
+  async function addReview() {
     if (!rating || !title.trim() || !body.trim()) {
       alert("Please provide a rating, a short title, and your thoughts.");
       return;
     }
+
+    // Build review object for local display
     const newReview: Review = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       createdAt: Date.now(),
@@ -221,10 +224,39 @@ export default function AreaPage() {
       body: body.trim(),
       user: user.trim() || undefined,
     };
-    const next = { ...reviewMap, [currentKey]: [...(reviewMap[currentKey] || []), newReview] };
+
+    // Save locally so the user sees it right away
+    const next = {
+      ...reviewMap,
+      [currentKey]: [...(reviewMap[currentKey] || []), newReview],
+    };
     setReviewMap(next);
     saveAll(next);
-    // Reset form
+
+    // Send moderation email (best-effort; UI does not block if email fails)
+    setSending(true);
+    try {
+      await fetch("/api/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          county,
+          region,
+          estate: estate || "All Areas",
+          rating,
+          title: title.trim(),
+          body: body.trim(),
+          user: user.trim() || undefined,
+          website, // honeypot; should be empty
+        }),
+      });
+    } catch (err) {
+      console.error("Email send failed", err);
+    } finally {
+      setSending(false);
+    }
+
+    // Reset form (keep website honeypot untouched)
     setRating(0);
     setTitle("");
     setBody("");
@@ -414,6 +446,20 @@ export default function AreaPage() {
                 >
                   <h3 style={{ marginTop: 0, marginBottom: 12 }}>Add a review</h3>
 
+                  {/* Honeypot field (hidden from users). Keep focusable=false and off-screen. */}
+                  <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: 0, height: 0, overflow: "hidden" }}>
+                    <label htmlFor="website">Website</label>
+                    <input
+                      id="website"
+                      name="website"
+                      type="text"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
+                    />
+                  </div>
+
                   <div
                     style={{
                       display: "grid",
@@ -508,16 +554,18 @@ export default function AreaPage() {
                       <button
                         type="button"
                         onClick={addReview}
+                        disabled={sending}
                         style={{
                           padding: "12px 16px",
                           borderRadius: 12,
                           border: "1px solid #e2def2",
                           background: "linear-gradient(180deg, #f6f3ff, #efe9ff)",
                           fontWeight: 700,
-                          cursor: "pointer",
+                          cursor: sending ? "not-allowed" : "pointer",
+                          opacity: sending ? 0.7 : 1,
                         }}
                       >
-                        Submit review
+                        {sending ? "Submitting…" : "Submit review"}
                       </button>
                     </div>
                   </div>
