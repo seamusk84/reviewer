@@ -66,17 +66,7 @@ function pick(row: Record<string, string>, names: string[]): string | undefined 
 const COUNTY_COLS = ["county", "county name", "countyname", "COUNTY"];
 const TOWN_COLS = ["settlement", "settlement name", "town", "town name", "region", "place_name", "SETTLEMENT"];
 const ESTATE_COLS = [
-  "estate",
-  "small area",
-  "small area name",
-  "sa name",
-  "townland",
-  "locality",
-  "area",
-  "estate/area",
-  "place",
-  "SMALL_AREA",
-  "TOWNLAND",
+  "estate", "small area", "small area name", "sa name", "townland", "locality", "area", "estate/area", "place", "SMALL_AREA", "TOWNLAND",
 ];
 
 type Row = { county: string; town: string; estate?: string };
@@ -237,7 +227,7 @@ function FilterSelect(props: {
   );
 }
 
-/* -------------------- Irish News panel (3-up, muted) -------------------- */
+/* -------------------- Irish News panel (unchanged) -------------------- */
 type NewsItem = { source: "RTE" | "Irish Times" | "Irish Independent"; title: string; link: string; pubDate?: string };
 
 function NewsPanel() {
@@ -253,9 +243,7 @@ function NewsPanel() {
         if (!stop && Array.isArray(j.items)) setItems(j.items);
       } catch {}
     })();
-    return () => {
-      stop = true;
-    };
+    return () => { stop = true; };
   }, []);
 
   useEffect(() => {
@@ -283,18 +271,7 @@ function NewsPanel() {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <span
-          style={{
-            fontSize: 12,
-            background: "#eae6fb",
-            color: "#5a4fb5",
-            padding: "2px 8px",
-            borderRadius: 999,
-            border: "1px solid #d9d2f7",
-          }}
-        >
-          External news
-        </span>
+        <span style={{ fontSize: 12, background: "#eae6fb", color: "#5a4fb5", padding: "2px 8px", borderRadius: 999, border: "1px solid #d9d2f7" }}>External news</span>
         <span style={{ fontSize: 12, color: "#6e6890" }}>RTÉ · Irish Times · Irish Independent</span>
       </div>
 
@@ -305,22 +282,8 @@ function NewsPanel() {
 
       <div className="news-grid" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr" }}>
         {visible.map((n, i) => (
-          <a
-            key={i + n.title}
-            href={n.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "block",
-              textDecoration: "none",
-              padding: "10px 12px",
-              background: "#fff",
-              border: "1px solid #efeafd",
-              borderRadius: 12,
-              boxShadow: "0 6px 16px rgba(31,22,78,0.05)",
-              color: "#2a2359",
-            }}
-          >
+          <a key={i + n.title} href={n.link} target="_blank" rel="noopener noreferrer"
+            style={{ display: "block", textDecoration: "none", padding: "10px 12px", background: "#fff", border: "1px solid #efeafd", borderRadius: 12, boxShadow: "0 6px 16px rgba(31,22,78,0.05)", color: "#2a2359" }}>
             <div style={{ fontWeight: 700, marginBottom: 6, lineHeight: 1.2 }}>{n.title}</div>
             <div style={{ fontSize: 12, color: "#7a7396" }}>— {n.source}</div>
           </a>
@@ -366,7 +329,7 @@ export default function Home() {
         const mapped: Row[] = raw
           .map((r) => {
             const c = pick(r, COUNTY_COLS) || "";
-            const t = pick(r, TOWN_COLS) || ""; // still read town/settlement from CSV
+            const t = pick(r, TOWN_COLS) || "";
             const e = pick(r, ESTATE_COLS);
             return { county: c, town: t, estate: e };
           })
@@ -389,21 +352,13 @@ export default function Home() {
       }
     }
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   // Derived option lists
-  const counties = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.county))).sort(),
-    [rows]
-  );
+  const counties = useMemo(() => Array.from(new Set(rows.map((r) => r.county))).sort(), [rows]);
   const regions = useMemo(
-    () =>
-      Array.from(
-        new Set(rows.filter((r) => !county || r.county === county).map((r) => r.town))
-      ).sort(),
+    () => Array.from(new Set(rows.filter((r) => !county || r.county === county).map((r) => r.town))).sort(),
     [rows, county]
   );
   const estates = useMemo(
@@ -419,13 +374,14 @@ export default function Home() {
     [rows, county, region]
   );
 
-  // Navigate to /search with params (no more alert)
+  // Go to /area with selected params
   function handleSearch() {
     const query: Record<string, string> = {};
     if (county) query.county = county;
     if (region) query.region = region;
     if (estate) query.estate = estate;
-    router.push({ pathname: "/search", query });
+    // Even if no estate selected, we'll send county+region and let /area show the list
+    router.push({ pathname: "/area", query });
   }
 
   return (
@@ -436,36 +392,14 @@ export default function Home() {
       </Head>
 
       {/* Background layer */}
-      <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          background:
-            "radial-gradient(1200px 600px at 10% -10%, #efeaff 10%, transparent 60%), radial-gradient(800px 400px at 100% 0%, #f7f3ff 10%, transparent 60%), #f7f7fb",
-          zIndex: -1,
-        }}
-      />
+      <div style={{ position: "fixed", inset: 0, background:
+        "radial-gradient(1200px 600px at 10% -10%, #efeaff 10%, transparent 60%), radial-gradient(800px 400px at 100% 0%, #f7f3ff 10%, transparent 60%), #f7f7fb", zIndex: -1 }} />
 
       <main style={{ maxWidth: 1120, margin: "2.4rem auto 3.2rem", padding: "0 1rem" }}>
         {/* Hero */}
         <section style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-            <div
-              aria-hidden
-              style={{
-                height: 36,
-                width: 36,
-                borderRadius: 12,
-                background: "linear-gradient(140deg, #8b5cf6, #a78bfa)",
-                display: "grid",
-                placeItems: "center",
-                color: "white",
-                boxShadow: "0 6px 14px rgba(139, 92, 246, 0.35)",
-                fontSize: 18,
-              }}
-            >
-              🏠
-            </div>
+            <div aria-hidden style={{ height: 36, width: 36, borderRadius: 12, background: "linear-gradient(140deg, #8b5cf6, #a78bfa)", display: "grid", placeItems: "center", color: "white", boxShadow: "0 6px 14px rgba(139, 92, 246, 0.35)", fontSize: 18 }}>🏠</div>
             <h1 style={{ fontSize: 34, lineHeight: 1.2, margin: 0, letterSpacing: 0.2 }}>
               Rate and See Towns and Estates nationwide
             </h1>
@@ -476,20 +410,11 @@ export default function Home() {
         </section>
 
         {/* Card */}
-        <section
-          style={{
-            background: "linear-gradient(180deg, #ffffff 0%, #fefcff 100%)",
-            borderRadius: 18,
-            border: "1px solid #eeeafc",
-            boxShadow: "0 14px 36px rgba(31, 22, 78, 0.08)",
-            padding: 22,
-          }}
-        >
+        <section style={{ background: "linear-gradient(180deg, #ffffff 0%, #fefcff 100%)", borderRadius: 18, border: "1px solid #eeeafc", boxShadow: "0 14px 36px rgba(31, 22, 78, 0.08)", padding: 22 }}>
           {loading && <p style={{ margin: 0 }}>Loading data…</p>}
           {error && (
             <p style={{ color: "crimson", margin: 0 }}>
-              {error}
-              <br />
+              {error}<br />
               <small>Ensure a CSV with county/region (town/settlement) and optionally estate exists under <code>/public/data</code>.</small>
             </p>
           )}
@@ -503,64 +428,28 @@ export default function Home() {
               `}</style>
 
               <div className="grid-areas" style={{ display: "grid", gap: 18, gridTemplateColumns: "1fr" }}>
-                <FilterSelect
-                  label="County"
-                  options={counties}
-                  value={county}
-                  onChange={(val) => {
-                    setCounty(val);
-                    setRegion("");
-                    setEstate("");
-                  }}
-                  placeholder="Start typing a county…"
-                />
-                <FilterSelect
-                  label="Region"
-                  options={regions}
-                  value={region}
-                  onChange={(val) => {
-                    setRegion(val);
-                    setEstate("");
-                  }}
-                  placeholder="Start typing a region…"
-                  disabled={!county}
-                />
-                <FilterSelect
-                  label="Estate / Town"
-                  options={estates}
-                  value={estate}
-                  onChange={setEstate}
-                  placeholder="Select an estate or town…"
-                  disabled={!region}
-                />
+                <FilterSelect label="County" options={counties} value={county}
+                  onChange={(val) => { setCounty(val); setRegion(""); setEstate(""); }} placeholder="Start typing a county…" />
+                <FilterSelect label="Region" options={regions} value={region}
+                  onChange={(val) => { setRegion(val); setEstate(""); }} placeholder="Start typing a region…" disabled={!county} />
+                <FilterSelect label="Estate / Town" options={estates} value={estate}
+                  onChange={setEstate} placeholder="Select an estate or town…" disabled={!region} />
               </div>
 
               {/* Action + helper */}
               <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  style={{
-                    padding: "12px 18px",
-                    borderRadius: 12,
-                    border: "1px solid #e2def2",
-                    background: "linear-gradient(180deg, #f6f3ff, #efe9ff)",
-                    cursor: county ? "pointer" : "not-allowed",
-                    fontWeight: 700,
-                  }}
-                  onClick={handleSearch}
-                  disabled={!county}
-                >
+                <button type="button"
+                  style={{ padding: "12px 18px", borderRadius: 12, border: "1px solid #e2def2", background: "linear-gradient(180deg, #f6f3ff, #efe9ff)", cursor: county ? "pointer" : "not-allowed", fontWeight: 700 }}
+                  onClick={handleSearch} disabled={!county}>
                   Search
                 </button>
-                <span style={{ color: "#6b677a" }}>
-                  Tip: choose <em>All Areas</em> to review the whole region.
-                </span>
+                <span style={{ color: "#6b677a" }}>Tip: choose <em>All Areas</em> to review the whole region.</span>
               </div>
             </>
           )}
         </section>
 
-        {/* Muted Irish News block (fills the bottom whitespace) */}
+        {/* Muted Irish News block */}
         <NewsPanel />
 
         {/* Footer */}
