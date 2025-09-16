@@ -1,159 +1,205 @@
-// pages/api/reviews.ts
+// pages/api/review.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import crypto from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
+import { Resend } from "resend";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+/**
+ * Email service
+ * - Make sure RESEND_API_KEY is set in env (Vercel Project → Settings → Environment Variables)
+ * - FROM must be allowed by your Resend plan; sandbox works with onboarding@resend.dev
+ */
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-const RATE_LIMIT_PER_HOUR = Number(process.env.RATE_LIMIT_PER_HOUR || "3");
-const RATE_LIMIT_SECRET = process.env.RATE_LIMIT_SECRET || "";
-const HCAPTCHA_SECRET = process.env.HCAPTCHA_SECRET || ""; // if empty, captcha is disabled
+// Moderation recipient + sender
+const MOD_EMAIL = "seamusk84@gmail.com";
+const FROM_EMAIL = "onboarding@resend.dev";
 
-function clientIp(req: NextApiRequest) {
-  const xf = (req.headers["x-forwarded-for"] as string) || "";
-  return (xf.split(",")[0] || req.socket.remoteAddress || "").trim();
+/* -------------------------------------------------------------------------- */
+/*                                Types & utils                               */
+/* -------------------------------------------------------------------------- */
+type ReviewPayload = {
+  county: string;
+  region: string;
+  estate?: string; // "All Areas" allowed
+  rating: number; // 1..5
+  title: string;
+  body: string;
+  user?: string;
+  // Honeypot (should be empty)
+  website?: string;
+};
+
+// Simple helper to safely render user strings in HTML
+function esc(s: unknown) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
-function ipHash(ip: string) {
-  if (!RATE_LIMIT_SECRET) return ip;
-  return crypto.createHmac("sha256", RATE_LIMIT_SECRET).update(ip).digest("hex");
+
+function toTextEmail(p: Required<ReviewPayload>) {
+  return [
+    "New StreetSage Review",
+    "",
+    `County: ${p.county}`,
+    `Region: ${p.region}`,
+    `Estate/Town: ${p.estate}`,
+    `Rating: ${p.rating} / 5`,
+    `Title: ${p.title}`,
+    "",
+    "Body:",
+    p.body,
+    "",
+    `User: ${p.user || "Anonymous"}`,
+  ].join("\n");
 }
 
-async function verifyCaptcha(token?: string, remoteip?: string) {
-  if (!HCAPTCHA_SECRET) return { ok: true, reason: "captcha-disabled" };
-  if (!token) return { ok: false, reason: "missing-token" };
-  const body = new URLSearchParams({ secret: HCAPTCHA_SECRET, response: token });
-  if (remoteip) body.set("remoteip", remoteip);
-  try {
-    const r = await fetch("https://hcaptcha.com/siteverify", { method: "POST", body });
-    const j = await r.json();
-    return j.success ? { ok: true } : { ok: false, reason: (j["error-codes"] || []).join(",") || "captcha-failed" };
-  } catch {
-    return { ok: false, reason: "verify-error" };
+function toHtmlEmail(p: Required<ReviewPayload>) {
+  return `
+  <div style="font-family:ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111;line-height:1.5">
+    <h2 style="margin:0 0 12px">New StreetSage Review</h2>
+    <table cellpadding="6" cellspacing="0" style="border-collapse:collapse">
+      <tr><td><strong>County</strong></td><td>${esc(p.county)}</td></tr>
+      <tr><td><strong>Region</strong></td><td>${esc(p.region)}</td></tr>
+      <tr><td><strong>Estate/Town</strong></td><td>${esc(p.estate)}</td></tr>
+      <tr><td><strong>Rating</strong></td><td>${p.rating} / 5</td></tr>
+      <tr><td><strong>Title</strong></td><td>${esc(p.title)}</td></tr>
+      <tr><td valign="top"><strong>Body</strong></td>
+          <td><div style="white-space:pre-wrap;border:1px solid #eee;border-radius:8px;padding:12px;background:#fafafa">${esc(
+            p.body
+          )}</div></td></tr>
+      <tr><td><strong>User</strong></td><td>${esc(p.user || "Anonymous")}</td></tr>
+    </table>
+  </div>`;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                            Basic in-memory limits                           */
+/* -------------------------------------------------------------------------- */
+
+// Very light IP-based rate limit (best-effort; per serverless instance)
+const windowMs = 60_000; // 1 minute
+const maxPerWindow = 5; // allow 5 reviews/IP/minute
+const ipHits = new Map<string, { count: number; resetAt: number }>();
+
+function hitLimit(ip: string) {
+  const now = Date.now();
+  const slot = ipHits.get(ip);
+  if (!slot || slot.resetAt < now) {
+    ipHits.set(ip, { count: 1, resetAt: now + windowMs });
+    return false;
   }
+  slot.count++;
+  if (slot.count > maxPerWindow) return true;
+  return false;
 }
 
+function getIp(req: NextApiRequest) {
+  // Vercel forwards IP via x-forwarded-for
+  const xf = (req.headers["x-forwarded-for"] as string) || "";
+  return (xf.split(",")[0] || req.socket.remoteAddress || "unknown").trim();
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                   Handler                                  */
+/* -------------------------------------------------------------------------- */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Optional CORS for local tests (safe to remove on prod)
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    return res.status(204).end();
+  }
+
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST, OPTIONS");
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // Enforce JSON content for predictable parsing
+  const ct = (req.headers["content-type"] || "").toString().toLowerCase();
+  if (!ct.includes("application/json")) {
+    return res.status(415).json({ error: "Content-Type must be application/json" });
+  }
+
+  // Parse + normalize
+  const raw = (req.body || {}) as Partial<ReviewPayload>;
+  const payload: ReviewPayload = {
+    county: String(raw.county ?? "").trim(),
+    region: String(raw.region ?? "").trim(),
+    estate: String(raw.estate ?? "All Areas").trim() || "All Areas",
+    rating: Number(raw.rating ?? 0),
+    title: String(raw.title ?? "").trim(),
+    body: String(raw.body ?? "").trim(),
+    user: String(raw.user ?? "").trim() || undefined,
+    website: String(raw.website ?? "").trim(), // honeypot
+  };
+
+  // Honeypot: if filled, silently accept but do nothing to avoid tipping off bots
+  if (payload.website) {
+    return res.status(200).json({ ok: true, silent: true });
+  }
+
+  // Validation
+  const errors: string[] = [];
+  const MAX_TITLE = 120;
+  const MAX_BODY = 5000;
+
+  if (!payload.county) errors.push("county is required");
+  if (!payload.region) errors.push("region is required");
+  if (Number.isNaN(payload.rating) || payload.rating < 1 || payload.rating > 5)
+    errors.push("rating must be 1..5");
+  if (!payload.title) errors.push("title is required");
+  if (!payload.body) errors.push("body is required");
+  if (payload.title.length > MAX_TITLE) errors.push(`title too long (max ${MAX_TITLE})`);
+  if (payload.body.length > MAX_BODY) errors.push(`body too long (max ${MAX_BODY})`);
+
+  if (errors.length) {
+    return res.status(400).json({ error: "Invalid payload", details: errors });
+  }
+
+  // Rate limit by IP (best-effort)
+  const ip = getIp(req);
+  if (hitLimit(ip)) {
+    return res.status(429).json({ error: "Too many requests, slow down." });
+  }
+
+  // Build message
+  const complete: Required<ReviewPayload> = {
+    county: payload.county,
+    region: payload.region,
+    estate: payload.estate || "All Areas",
+    rating: payload.rating,
+    title: payload.title,
+    body: payload.body,
+    user: payload.user || "",
+    website: "",
+  };
+
+  const subject = `New Review: ${complete.county} · ${complete.region} · ${complete.estate} (${complete.rating}/5)`;
+  const html = toHtmlEmail(complete);
+  const text = toTextEmail(complete);
+
+  // Safety: no API key
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("[review] RESEND_API_KEY missing — skipping email send");
+    return res.status(200).json({ ok: true, email: "skipped (no key)" });
+  }
+
   try {
-    // ---- GET: list approved reviews for a page ----
-    if (req.method === "GET") {
-      const { county, town, estate } = req.query as Record<string, string>;
-      if (!county || !town || !estate) return res.status(400).json({ error: "missing-params" });
+    const result = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: MOD_EMAIL,
+      subject,
+      html,
+      text,
+    });
 
-      const { data, error } = await db
-        .from("reviews")
-        .select("id, inserted_at, rating, title, body, name")
-        .eq("county", county)
-        .eq("town", town)
-        .eq("estate", estate)
-        .eq("status", "approved")
-        .is("deleted_at", null)
-        .order("inserted_at", { ascending: false })
-        .limit(100);
-
-      if (error) {
-        console.error("[REVIEWS][GET] supabase", error);
-        return res.status(500).json({ error: "db-error" });
-      }
-      return res.status(200).json({ items: data || [] });
-    }
-
-    // ---- POST: submit a pending review ----
-    if (req.method === "POST") {
-      const ip = clientIp(req);
-      const hash = ipHash(ip);
-      const {
-        county,
-        town,
-        estate,
-        rating,
-        title,
-        body,
-        name,
-        email,
-        // accept both names to avoid mismatches between page & API
-        hcaptchaToken,
-        captchaToken,
-      } = (req.body || {}) as Record<string, any>;
-
-      if (!county || !town || !estate || !body) {
-        return res.status(400).json({ error: "invalid-payload" });
-      }
-      const r = Number(rating);
-      if (!Number.isFinite(r) || r < 1 || r > 5) {
-        return res.status(400).json({ error: "invalid-rating" });
-      }
-
-      // CAPTCHA (only enforced if HCAPTCHA_SECRET is set)
-      const cap = await verifyCaptcha(hcaptchaToken || captchaToken, ip);
-      if (!cap.ok) {
-        console.warn("[HCAPTCHA] failed:", cap.reason);
-        return res.status(400).json({ error: "captcha-failed", reason: cap.reason });
-      }
-
-      // Rate limit (past hour)
-      if (RATE_LIMIT_SECRET) {
-        const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-        const { count, error: cErr } = await db
-          .from("submission_log")
-          .select("id", { head: true, count: "exact" })
-          .eq("ip_hash", hash)
-          .gte("inserted_at", since);
-        if (cErr) console.warn("[RATE] count error:", cErr?.message);
-        if ((count || 0) >= RATE_LIMIT_PER_HOUR) {
-          return res.status(429).json({ error: "too-many" });
-        }
-      }
-
-      // Insert review
-      const { error: insErr } = await db.from("reviews").insert({
-        county, town, estate,
-        rating: r,
-        title: title || null,
-        body,
-        name: name || null,
-        email: email || null,
-        status: "pending",
-        deleted_at: null,
-      });
-      if (insErr) {
-        console.error("[REVIEWS][INSERT]", insErr);
-        return res.status(500).json({ error: "insert-failed" });
-      }
-
-      // Log for rate limit window
-      if (RATE_LIMIT_SECRET) {
-        const { error: logErr } = await db.from("submission_log").insert({ ip_hash: hash });
-        if (logErr) console.warn("[RATE] log insert warn:", logErr?.message);
-      }
-
-      // Optional email alert
-      try {
-        if (process.env.RESEND_API_KEY && process.env.ALERT_EMAIL_FROM && process.env.ALERT_EMAIL_TO) {
-          const { Resend } = await import("resend");
-          const resend = new Resend(process.env.RESEND_API_KEY);
-          await resend.emails.send({
-            from: process.env.ALERT_EMAIL_FROM,
-            to: process.env.ALERT_EMAIL_TO,
-            subject: `New review pending: ${estate} — ${town}, ${county}`,
-            text:
-              `Location: ${county} / ${town} / ${estate}\n` +
-              `Rating: ${r}\nTitle: ${title || ""}\n\n${body}\n\n` +
-              `Name: ${name || "Anonymous"}\nEmail: ${email || "N/A"}\n`,
-          });
-        }
-      } catch (e) {
-        console.warn("[EMAIL] send failed:", (e as any)?.message || e);
-      }
-
-      return res.status(200).json({ ok: true });
-    }
-
-    res.setHeader("Allow", "GET, POST");
-    return res.status(405).json({ error: "method-not-allowed" });
-  } catch (e: any) {
-    console.error("[REVIEWS] unhandled", e?.message || e);
-    return res.status(500).json({ error: "server-error" });
+    // You can inspect `result` if needed (id, etc.)
+    return res.status(200).json({ ok: true, id: (result as any)?.id ?? null });
+  } catch (err) {
+    console.error("[review] Resend error:", err);
+    return res.status(500).json({ error: "Failed to send email" });
   }
 }
