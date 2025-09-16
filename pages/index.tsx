@@ -236,6 +236,70 @@ function FilterSelect(props: {
   );
 }
 
+/* -------------------- Minimal news strip -------------------- */
+type NewsItem = { source: "RTE" | "Irish Times" | "Irish Independent"; title: string; link: string; pubDate?: string };
+
+function NewsStrip() {
+  const [items, setItems] = useState<NewsItem[]>([]);
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    let stop = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/news", { cache: "no-store" });
+        const j = (await r.json()) as { items?: NewsItem[] };
+        if (!stop && Array.isArray(j.items)) setItems(j.items);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!items.length) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % items.length), 4500);
+    return () => clearInterval(t);
+  }, [items.length]);
+
+  if (!items.length) return null;
+
+  const current = items[idx];
+
+  return (
+    <section
+      aria-label="Irish news"
+      style={{
+        marginTop: 28,
+        background: "linear-gradient(180deg, #ffffff 0%, #faf8ff 100%)",
+        border: "1px solid #eeeafc",
+        borderRadius: 14,
+        padding: "10px 14px",
+        boxShadow: "0 10px 28px rgba(31,22,78,0.06)",
+      }}
+    >
+      <div style={{ fontSize: 12, color: "#6e6890", marginBottom: 6 }}>Irish news • RTÉ · Irish Times · Irish Independent</div>
+      <a
+        href={current.link}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: "inline-block",
+          fontWeight: 700,
+          textDecoration: "none",
+          color: "#2a2359",
+        }}
+      >
+        {current.title}
+      </a>
+      <span style={{ marginLeft: 8, color: "#7d7696" }}>— {current.source}</span>
+    </section>
+  );
+}
+
 /* -------------------- Page -------------------- */
 export default function Home() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -430,7 +494,7 @@ export default function Home() {
                 />
               </div>
 
-              {/* Action + helper (kept) */}
+              {/* Action + helper */}
               <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <button
                   type="button"
@@ -443,7 +507,6 @@ export default function Home() {
                     fontWeight: 700,
                   }}
                   onClick={() => {
-                    // Hook up to your navigation/search later
                     alert(
                       `Search:\nCounty: ${county || "(any)"}\nRegion: ${region || "(any)"}\nEstate/Town: ${estate || "(any)"}`
                     );
@@ -459,6 +522,9 @@ export default function Home() {
             </>
           )}
         </section>
+
+        {/* News strip fills the lower whitespace */}
+        <NewsStrip />
 
         {/* Footer */}
         <footer style={{ marginTop: 28, textAlign: "center", color: "#726c8a", fontSize: 13 }}>
