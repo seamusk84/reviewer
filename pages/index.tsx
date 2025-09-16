@@ -236,12 +236,12 @@ function FilterSelect(props: {
   );
 }
 
-/* -------------------- Minimal news strip -------------------- */
+/* -------------------- Irish News panel (3-up, muted) -------------------- */
 type NewsItem = { source: "RTE" | "Irish Times" | "Irish Independent"; title: string; link: string; pubDate?: string };
 
-function NewsStrip() {
+function NewsPanel() {
   const [items, setItems] = useState<NewsItem[]>([]);
-  const [idx, setIdx] = useState(0);
+  const [offset, setOffset] = useState(0);
 
   useEffect(() => {
     let stop = false;
@@ -250,52 +250,84 @@ function NewsStrip() {
         const r = await fetch("/api/news", { cache: "no-store" });
         const j = (await r.json()) as { items?: NewsItem[] };
         if (!stop && Array.isArray(j.items)) setItems(j.items);
-      } catch {
-        // ignore
-      }
+      } catch {}
     })();
     return () => {
       stop = true;
     };
   }, []);
 
+  // Rotate by 3 items at a time every 6s
   useEffect(() => {
     if (!items.length) return;
-    const t = setInterval(() => setIdx((i) => (i + 1) % items.length), 4500);
+    const t = setInterval(() => {
+      setOffset((o) => (o + 3) % items.length);
+    }, 6000);
     return () => clearInterval(t);
   }, [items.length]);
 
   if (!items.length) return null;
 
-  const current = items[idx];
+  const visible = [0, 1, 2]
+    .map((i) => items[(offset + i) % items.length])
+    .filter(Boolean) as NewsItem[];
 
   return (
     <section
-      aria-label="Irish news"
+      aria-label="Irish news (external)"
       style={{
         marginTop: 28,
-        background: "linear-gradient(180deg, #ffffff 0%, #faf8ff 100%)",
-        border: "1px solid #eeeafc",
-        borderRadius: 14,
-        padding: "10px 14px",
-        boxShadow: "0 10px 28px rgba(31,22,78,0.06)",
+        background: "linear-gradient(180deg, #f6f5fb 0%, #f2f0fa 100%)",
+        border: "1px dashed #dcd6f0",
+        borderRadius: 16,
+        padding: 14,
+        boxShadow: "0 8px 22px rgba(31,22,78,0.05)",
       }}
     >
-      <div style={{ fontSize: 12, color: "#6e6890", marginBottom: 6 }}>Irish news • RTÉ · Irish Times · Irish Independent</div>
-      <a
-        href={current.link}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{
-          display: "inline-block",
-          fontWeight: 700,
-          textDecoration: "none",
-          color: "#2a2359",
-        }}
-      >
-        {current.title}
-      </a>
-      <span style={{ marginLeft: 8, color: "#7d7696" }}>— {current.source}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span
+          style={{
+            fontSize: 12,
+            background: "#eae6fb",
+            color: "#5a4fb5",
+            padding: "2px 8px",
+            borderRadius: 999,
+            border: "1px solid #d9d2f7",
+          }}
+        >
+          External news
+        </span>
+        <span style={{ fontSize: 12, color: "#6e6890" }}>RTÉ · Irish Times · Irish Independent</span>
+      </div>
+
+      <style>{`
+        @media (min-width: 760px) { .news-grid { grid-template-columns: 1fr 1fr 1fr; } }
+        @media (max-width: 759px) { .news-grid { grid-template-columns: 1fr; } }
+      `}</style>
+
+      <div className="news-grid" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr" }}>
+        {visible.map((n, i) => (
+          <a
+            key={i + n.title}
+            href={n.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "block",
+              textDecoration: "none",
+              padding: "10px 12px",
+              background: "#fff",
+              border: "1px solid #efeafd",
+              borderRadius: 12,
+              boxShadow: "0 6px 16px rgba(31,22,78,0.05)",
+              color: "#2a2359",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 6, lineHeight: 1.2 }}>{n.title}</div>
+            <div style={{ fontSize: 12, color: "#7a7396" }}>— {n.source}</div>
+          </a>
+        ))}
+      </div>
     </section>
   );
 }
@@ -523,8 +555,8 @@ export default function Home() {
           )}
         </section>
 
-        {/* News strip fills the lower whitespace */}
-        <NewsStrip />
+        {/* Muted Irish News block (fills the bottom whitespace) */}
+        <NewsPanel />
 
         {/* Footer */}
         <footer style={{ marginTop: 28, textAlign: "center", color: "#726c8a", fontSize: 13 }}>
