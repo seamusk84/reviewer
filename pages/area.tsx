@@ -39,15 +39,11 @@ function splitCSVLine(line: string): string[] {
       if (inQuotes && line[i + 1] === '"') {
         cur += '"';
         i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
+      } else inQuotes = !inQuotes;
     } else if (ch === "," && !inQuotes) {
       out.push(cur);
       cur = "";
-    } else {
-      cur += ch;
-    }
+    } else cur += ch;
   }
   out.push(cur);
   return out;
@@ -65,7 +61,8 @@ function pick(row: Record<string, string>, names: string[]): string | undefined 
 const COUNTY_COLS = ["county", "county name", "countyname", "COUNTY"];
 const TOWN_COLS = ["settlement", "settlement name", "town", "town name", "region", "place_name", "SETTLEMENT"];
 const ESTATE_COLS = [
-  "estate", "small area", "small area name", "sa name", "townland", "locality", "area", "estate/area", "place", "SMALL_AREA", "TOWNLAND",
+  "estate", "small area", "small area name", "sa name", "townland", "locality",
+  "area", "estate/area", "place", "SMALL_AREA", "TOWNLAND",
 ];
 
 type Row = { county: string; town: string; estate?: string };
@@ -93,10 +90,7 @@ export default function AreaPage() {
           if (!res.ok) continue;
           const t = await res.text();
           const quick = parseCSV(t);
-          if (quick.length > 0) {
-            text = t;
-            break;
-          }
+          if (quick.length > 0) { text = t; break; }
         }
         if (!text) throw new Error(`No usable CSV found at: ${CSV_CANDIDATES.join(", ")}`);
 
@@ -112,7 +106,6 @@ export default function AreaPage() {
 
         if (!cancelled) setRows(mapped);
       } catch (e: any) {
-        console.error(e);
         if (!cancelled) setError(e?.message || "Failed to load data");
       } finally {
         if (!cancelled) setLoading(false);
@@ -124,13 +117,14 @@ export default function AreaPage() {
 
   const estatesInRegion = useMemo(
     () =>
-      Array.from(new Set(
-        rows
-          .filter((r) =>
-            (!county || r.county === county) && (!region || r.town === region))
-          .map((r) => r.estate)
-          .filter(Boolean) as string[]
-      )).sort(),
+      Array.from(
+        new Set(
+          rows
+            .filter((r) => (!county || r.county === county) && (!region || r.town === region))
+            .map((r) => (r.estate ?? "").trim())
+            .filter(Boolean)
+        )
+      ).sort(),
     [rows, county, region]
   );
 
@@ -139,8 +133,9 @@ export default function AreaPage() {
     [rows, county, region]
   );
 
-  // If URL has an estate that doesn't belong to this county/region, drop it.
+  // ✅ Only validate/remove the estate AFTER loading (fixes your issue)
   useEffect(() => {
+    if (loading) return; // wait until we have data
     if (!estate) return;
     if (!estatesInRegion.includes(estate)) {
       const q: Record<string, string> = {};
@@ -148,7 +143,7 @@ export default function AreaPage() {
       if (region) q.region = region;
       replace({ pathname: "/area", query: q }, undefined, { shallow: true });
     }
-  }, [estate, estatesInRegion, county, region, replace]);
+  }, [loading, estate, estatesInRegion, county, region, replace]);
 
   const hasSpecificEstate = !!estate && estatesInRegion.includes(estate);
 
@@ -160,8 +155,7 @@ export default function AreaPage() {
 
       <main style={{ maxWidth: 1100, margin: "2rem auto", padding: "0 1rem" }}>
         <nav style={{ fontSize: 13, color: "#6c6788", marginBottom: 8 }}>
-          <span>Home</span> · <span>{county || "All counties"}</span> ·{" "}
-          <span>{region || "All regions"}</span>
+          <span>Home</span> · <span>{county || "All counties"}</span> · <span>{region || "All regions"}</span>
           {hasSpecificEstate ? <> · <strong>{estate}</strong></> : null}
         </nav>
 
@@ -180,25 +174,14 @@ export default function AreaPage() {
         {!loading && !error && (
           <>
             {!hasSpecificEstate ? (
-              // LIST MODE — show all estates for this region
               estatesInRegion.length ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-                    gap: 12,
-                    marginTop: 16,
-                  }}
-                >
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12, marginTop: 16 }}>
                   {estatesInRegion.map((e) => {
-                    const url = {
-                      pathname: "/area",
-                      query: { county, region, estate: e },
-                    };
+                    const href = `/area?county=${encodeURIComponent(county)}&region=${encodeURIComponent(region)}&estate=${encodeURIComponent(e)}`;
                     return (
                       <a
                         key={e}
-                        href={`${url.pathname}?county=${encodeURIComponent(county)}&region=${encodeURIComponent(region)}&estate=${encodeURIComponent(e)}`}
+                        href={href}
                         style={{
                           display: "block",
                           padding: "12px 14px",
@@ -223,7 +206,6 @@ export default function AreaPage() {
                 <p style={{ marginTop: 16 }}>That region wasn’t found. Try going back and choosing a different one.</p>
               )
             ) : (
-              // DETAIL MODE — specific estate chosen
               <section
                 style={{
                   marginTop: 16,
@@ -236,7 +218,7 @@ export default function AreaPage() {
               >
                 <h2 style={{ marginTop: 0 }}>Reviews</h2>
 
-                {/* Placeholder: no backend yet */}
+                {/* Placeholder until your review backend is connected */}
                 <div
                   style={{
                     padding: 16,
@@ -249,7 +231,6 @@ export default function AreaPage() {
                   <strong>No reviews yet.</strong> Be the first to add a review!
                 </div>
 
-                {/* Later: replace with your real review form or link */}
                 <div style={{ marginTop: 14 }}>
                   <a
                     href="#add-review"
