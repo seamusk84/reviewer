@@ -427,4 +427,142 @@ export default function AreaPage() {
                         Rating
                       </label>
                       <div style={{ display: "flex", gap: 6 }}>
-                        {[1, 2]()
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => setRating(n)}
+                            title={`${n} star${n > 1 ? "s" : ""}`}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 10,
+                              border:
+                                rating >= n
+                                  ? "2px solid #8b5cf6"
+                                  : "1px solid #dcd6f0",
+                              background:
+                                rating >= n ? "#f4f0ff" : "linear-gradient(#fff,#fff)",
+                              cursor: "pointer",
+                            }}
+                          >
+                            {"★".repeat(n)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+                        Short title
+                      </label>
+                      <input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="e.g., Quiet area with friendly neighbours"
+                        style={{
+                          width: "100%",
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid #e5e1f3",
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+                        Your experience
+                      </label>
+                      <textarea
+                        value={body}
+                        onChange={(e) => setBody(e.target.value)}
+                        placeholder="What you like, what could be better, transport, schools, safety…"
+                        rows={5}
+                        style={{
+                          width: "100%",
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid #e5e1f3",
+                          resize: "vertical",
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+                        Display name (optional)
+                      </label>
+                      <input
+                        value={user}
+                        onChange={(e) => setUser(e.target.value)}
+                        placeholder="e.g., Sarah M."
+                        style={{
+                          width: "100%",
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid #e5e1f3",
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <button
+                        type="button"
+                        onClick={addReview}
+                        style={{
+                          padding: "12px 16px",
+                          borderRadius: 12,
+                          border: "1px solid #e2def2",
+                          background: "linear-gradient(180deg, #f6f3ff, #efe9ff)",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Submit review
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Review list */}
+                {reviews.length > 0 && (
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                    {reviews.map((r) => (
+                      <li
+                        key={r.id}
+                        style={{
+                          border: "1px solid #efeafc",
+                          background: "#fff",
+                          borderRadius: 12,
+                          padding: 14,
+                          marginBottom: 10,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            marginBottom: 6,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <Stars value={r.rating} />
+                          <strong>{r.title}</strong>
+                          <span style={{ color: "#7a7396", fontSize: 12 }}>
+                            {new Date(r.createdAt).toLocaleDateString()}
+                            {r.user ? ` · ${r.user}` : ""}
+                          </span>
+                        </div>
+                        <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{r.body}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+          </>
+        )}
+      </main>
+    </>
+  );
+}
