@@ -65,7 +65,17 @@ function pick(row: Record<string, string>, names: string[]): string | undefined 
 const COUNTY_COLS = ["county", "county name", "countyname", "COUNTY"];
 const TOWN_COLS = ["settlement", "settlement name", "town", "town name", "region", "place_name", "SETTLEMENT"];
 const ESTATE_COLS = [
-  "estate", "small area", "small area name", "sa name", "townland", "locality", "area", "estate/area", "place", "SMALL_AREA", "TOWNLAND",
+  "estate",
+  "small area",
+  "small area name",
+  "sa name",
+  "townland",
+  "locality",
+  "area",
+  "estate/area",
+  "place",
+  "SMALL_AREA",
+  "TOWNLAND",
 ];
 
 type Row = { county: string; town: string; estate?: string };
@@ -260,7 +270,7 @@ export default function Home() {
         const mapped: Row[] = raw
           .map((r) => {
             const c = pick(r, COUNTY_COLS) || "";
-            const t = pick(r, TOWN_COLS) || "";      // we still read “town/settlement” from CSV
+            const t = pick(r, TOWN_COLS) || ""; // still read town/settlement from CSV
             const e = pick(r, ESTATE_COLS);
             return { county: c, town: t, estate: e };
           })
@@ -312,13 +322,6 @@ export default function Home() {
       ).sort(),
     [rows, county, region]
   );
-
-  const stats = useMemo(() => {
-    const regionCount = regions.length;
-    const estateCount = estates.length;
-    const totalRows = rows.length;
-    return { regionCount, estateCount, totalRows };
-  }, [regions.length, estates.length, rows.length]);
 
   return (
     <>
@@ -427,7 +430,7 @@ export default function Home() {
                 />
               </div>
 
-              {/* Action + helper */}
+              {/* Action + helper (kept) */}
               <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <button
                   type="button"
@@ -452,23 +455,6 @@ export default function Home() {
                 <span style={{ color: "#6b677a" }}>
                   Tip: choose <em>All Areas</em> to review the whole region.
                 </span>
-              </div>
-
-              {/* Tiny stats row */}
-              <div
-                style={{
-                  marginTop: 16,
-                  display: "flex",
-                  gap: 16,
-                  color: "#5a5474",
-                  fontSize: 13,
-                  flexWrap: "wrap",
-                }}
-              >
-                <span>Counties loaded: <strong>{counties.length}</strong></span>
-                <span>Available regions: <strong>{stats.regionCount}</strong></span>
-                <span>Available estates/towns: <strong>{stats.estateCount}</strong></span>
-                <span>Total records: <strong>{stats.totalRows}</strong></span>
               </div>
             </>
           )}
