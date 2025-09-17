@@ -236,7 +236,7 @@ export default function AreaPage() {
     // Send moderation email (best-effort; UI does not block if email fails)
     setSending(true);
     try {
-      await fetch("/api/review", {
+      await fetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
