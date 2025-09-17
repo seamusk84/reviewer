@@ -67,38 +67,15 @@ const ESTATE_COLS = [
 
 type Row = { county: string; town: string; estate?: string };
 
-/* -------------------- Local review storage (no backend) -------------------- */
-type Review = {
+/* -------------------- Server-backed reviews (approved only) -------------------- */
+type RemoteReview = {
   id: string;
-  createdAt: number;
+  createdAt: number | string; // will be formatted
   rating: number; // 1..5
   title: string;
   body: string;
-  user?: string; // optional display name
+  user?: string;
 };
-
-const LS_KEY = "streetsage_reviews_v1";
-
-function makeKey(county: string, region: string, estate: string) {
-  // "All Areas" is allowed to represent the whole region
-  return `${county}||${region}||${estate || "All Areas"}`.toLowerCase();
-}
-function loadAll(): Record<string, Review[]> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") return parsed;
-  } catch {}
-  return {};
-}
-function saveAll(map: Record<string, Review[]>) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(map));
-  } catch {}
-}
 
 /* -------------------- Page -------------------- */
 export default function AreaPage() {
@@ -112,9 +89,10 @@ export default function AreaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Reviews in localStorage
-  const [reviewMap, setReviewMap] = useState<Record<string, Review[]>>({});
-  const currentKey = makeKey(county, region, estate);
+  // Approved reviews fetched from the API
+  const [remoteReviews, setRemoteReviews] = useState<RemoteReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
 
   // Load CSV
   useEffect(() => {
@@ -155,11 +133,6 @@ export default function AreaPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Load reviews from localStorage on mount
-  useEffect(() => {
-    setReviewMap(loadAll());
-  }, []);
-
   const estatesInRegion = useMemo(
     () =>
       Array.from(
@@ -196,10 +169,42 @@ export default function AreaPage() {
     !!estate &&
     (estate.toLowerCase() === "all areas" || estatesInRegion.includes(estate));
 
-  // Current reviews
-  const reviews = (reviewMap[currentKey] || []).slice().sort((a, b) => b.createdAt - a.createdAt);
+  // fetch APPROVED reviews for the current selection
+  useEffect(() => {
+    let cancelled = false;
+    async function loadApproved() {
+      if (!region && !estate) {
+        setRemoteReviews([]);
+        return;
+      }
+      setReviewsLoading(true);
+      setReviewsError(null);
+      try {
+        const params = new URLSearchParams({
+          status: "approved",
+          county,
+          region,
+          estate: estate || "All Areas",
+        });
+        const res = await fetch(`/api/reviews?${params.toString()}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`Failed to load reviews (${res.status})`);
+        const data = await res.json();
+        const arr: RemoteReview[] = Array.isArray(data?.reviews) ? data.reviews : [];
+        if (!cancelled) setRemoteReviews(arr);
+      } catch (e: any) {
+        if (!cancelled) setReviewsError(e?.message || "Failed to load reviews");
+      } finally {
+        if (!cancelled) setReviewsLoading(false);
+      }
+    }
+    loadApproved();
+    return () => { cancelled = true; };
+  }, [county, region, estate]);
+
   const avgRating =
-    reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
+    remoteReviews.length
+      ? remoteReviews.reduce((s, r) => s + (r.rating || 0), 0) / remoteReviews.length
+      : 0;
 
   // Form state (+ honeypot)
   const [rating, setRating] = useState(0);
@@ -209,34 +214,16 @@ export default function AreaPage() {
   const [website, setWebsite] = useState(""); // honeypot
   const [sending, setSending] = useState(false);
 
+  // SUBMIT: send for moderation only (do NOT publish locally)
   async function addReview() {
     if (!rating || !title.trim() || !body.trim()) {
       alert("Please provide a rating, a short title, and your thoughts.");
       return;
     }
 
-    // Build review object for local display
-    const newReview: Review = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      createdAt: Date.now(),
-      rating,
-      title: title.trim(),
-      body: body.trim(),
-      user: user.trim() || undefined,
-    };
-
-    // Save locally so the user sees it right away
-    const next = {
-      ...reviewMap,
-      [currentKey]: [...(reviewMap[currentKey] || []), newReview],
-    };
-    setReviewMap(next);
-    saveAll(next);
-
-    // Send moderation email (best-effort; UI does not block if email fails)
     setSending(true);
     try {
-      await fetch("/api/reviews", {
+      const res = await fetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -250,17 +237,24 @@ export default function AreaPage() {
           website, // honeypot; should be empty
         }),
       });
-    } catch (err) {
-      console.error("Email send failed", err);
+
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(`Submit failed (${res.status}): ${msg}`);
+      }
+
+      // clear the form + inform user
+      setRating(0);
+      setTitle("");
+      setBody("");
+      setUser("");
+      alert("Thanks! Your review has been submitted for moderation.");
+    } catch (err: any) {
+      console.error("Email/submit failed:", err);
+      alert(err?.message || "Something went wrong. Please try again.");
     } finally {
       setSending(false);
     }
-
-    // Reset form (keep website honeypot untouched)
-    setRating(0);
-    setTitle("");
-    setBody("");
-    setUser("");
   }
 
   function Stars({ value }: { value: number }) {
@@ -406,10 +400,11 @@ export default function AreaPage() {
                   }}
                 >
                   <strong>Reviews</strong>
-                  {reviews.length > 0 && (
+                  {reviewsLoading && <span style={{ color: "#6c6788" }}>Loading…</span>}
+                  {!reviewsLoading && remoteReviews.length > 0 && (
                     <span style={{ color: "#6c6788" }}>
-                      <span aria-hidden>·</span> {reviews.length}{" "}
-                      {reviews.length === 1 ? "review" : "reviews"}{" "}
+                      <span aria-hidden>·</span> {remoteReviews.length}{" "}
+                      {remoteReviews.length === 1 ? "review" : "reviews"}{" "}
                       <span aria-hidden>·</span>{" "}
                       <span title={`${avgRating.toFixed(2)}/5`}>
                         Avg: {avgRating.toFixed(1)} / 5
@@ -419,7 +414,7 @@ export default function AreaPage() {
                 </div>
 
                 {/* Empty state */}
-                {reviews.length === 0 && (
+                {!reviewsLoading && remoteReviews.length === 0 && (
                   <div
                     style={{
                       padding: 16,
@@ -571,40 +566,47 @@ export default function AreaPage() {
                   </div>
                 </div>
 
-                {/* Review list */}
-                {reviews.length > 0 && (
+                {/* Review list (approved only) */}
+                {!reviewsLoading && remoteReviews.length > 0 && (
                   <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                    {reviews.map((r) => (
-                      <li
-                        key={r.id}
-                        style={{
-                          border: "1px solid #efeafc",
-                          background: "#fff",
-                          borderRadius: 12,
-                          padding: 14,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <div
+                    {remoteReviews
+                      .slice()
+                      .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0))
+                      .map((r) => (
+                        <li
+                          key={r.id}
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            marginBottom: 6,
-                            flexWrap: "wrap",
+                            border: "1px solid #efeafc",
+                            background: "#fff",
+                            borderRadius: 12,
+                            padding: 14,
+                            marginBottom: 10,
                           }}
                         >
-                          <Stars value={r.rating} />
-                          <strong>{r.title}</strong>
-                          <span style={{ color: "#7a7396", fontSize: 12 }}>
-                            {new Date(r.createdAt).toLocaleDateString()}
-                            {r.user ? ` · ${r.user}` : ""}
-                          </span>
-                        </div>
-                        <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{r.body}</p>
-                      </li>
-                    ))}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              marginBottom: 6,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <Stars value={r.rating} />
+                            <strong>{r.title}</strong>
+                            <span style={{ color: "#7a7396", fontSize: 12 }}>
+                              {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ""}
+                              {r.user ? ` · ${r.user}` : ""}
+                            </span>
+                          </div>
+                          <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{r.body}</p>
+                        </li>
+                      ))}
                   </ul>
+                )}
+
+                {reviewsError && (
+                  <p style={{ color: "crimson", marginTop: 12 }}>{reviewsError}</p>
                 )}
               </section>
             )}
