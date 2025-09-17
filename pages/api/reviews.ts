@@ -1,25 +1,26 @@
 // pages/api/reviews.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
+import { Resend } from "resend";
 
-/** ------------------------ ENV ------------------------ */
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const MOD_EMAIL = process.env.MOD_EMAIL || "seamusk84@gmail.com";
-const FROM_EMAIL = process.env.FROM_EMAIL || "onboarding@resend.dev";
-const resendKey = process.env.RESEND_API_KEY;
+/* ---------------------------- ENV ---------------------------- */
+const SUPABASE_URL = (process.env.SUPABASE_URL || "").trim();
+const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const MOD_EMAIL = (process.env.MOD_EMAIL || "seamusk84@gmail.com").trim();
+const FROM_EMAIL = (process.env.FROM_EMAIL || "onboarding@resend.dev").trim();
+const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").trim();
 
-/** ------------------------ DB ------------------------- */
+/* ---------------------------- DB ----------------------------- */
+/** If either env var is missing, we keep null to expose a clear error below. */
 const supabase =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
-/** ---------------------- Email ------------------------ */
-const resend = resendKey ? new Resend(resendKey) : null;
+/* -------------------------- EMAIL ---------------------------- */
+const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
-/** ---------------------- Types ------------------------ */
+/* --------------------------- TYPES --------------------------- */
 type ReviewPayload = {
   county: string;
   region: string;
@@ -28,8 +29,7 @@ type ReviewPayload = {
   title: string;
   body: string;
   user?: string;
-  // Honeypot (should be empty)
-  website?: string;
+  website?: string; // honeypot
 };
 
 type DBReview = {
@@ -47,7 +47,7 @@ type DBReview = {
   deleted_at: string | null;
 };
 
-/** --------------------- Helpers ----------------------- */
+/* ------------------------- HELPERS --------------------------- */
 function esc(s: unknown) {
   return String(s ?? "")
     .replaceAll("&", "&amp;")
@@ -93,9 +93,9 @@ function emailHtml(p: Required<ReviewPayload>) {
   </div>`;
 }
 
-/** ----------------- Light rate limit ------------------ */
-const windowMs = 60_000; // 1 minute
-const maxPerWindow = 5; // 5 reviews/IP/min
+/* -------------------- Light IP rate limit -------------------- */
+const windowMs = 60_000;
+const maxPerWindow = 5;
 const ipHits = new Map<string, { n: number; reset: number }>();
 function hit(ip: string) {
   const now = Date.now();
@@ -112,7 +112,7 @@ const ipOf = (req: NextApiRequest) =>
     .split(",")[0]
     .trim() || req.socket.remoteAddress || "unknown";
 
-/** ---------------------- Handler ---------------------- */
+/* -------------------------- HANDLER -------------------------- */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // CORS (optional)
   if (req.method === "OPTIONS") {
@@ -128,10 +128,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   return res.status(405).json({ error: "Method not allowed" });
 }
 
-/** ------------------------- GET ----------------------- */
-/** Public read: used by the estate page to fetch approved reviews */
+/* ---------------------------- GET ---------------------------- */
 async function handleGet(req: NextApiRequest, res: NextApiResponse) {
-  if (!supabase) return res.status(500).json({ error: "Storage not configured" });
+  if (!supabase) {
+    return res.status(500).json({
+      error: "Storage not configured",
+      hasUrl: !!SUPABASE_URL,
+      hasServiceKey: !!SUPABASE_SERVICE_ROLE_KEY,
+    });
+  }
 
   const { status = "approved", county = "", region = "", estate = "" } =
     req.query as Record<string, string>;
@@ -153,10 +158,9 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
   const { data, error } = await q;
   if (error) return res.status(500).json({ error: error.message });
 
-  // Map to the lean shape your UI expects
   const reviews = (data || []).map((r) => ({
     id: r.id,
-    createdAt: r.created_at || r.inserted_at, // tolerate either
+    createdAt: r.created_at || r.inserted_at,
     rating: r.rating,
     title: r.title,
     body: r.body,
@@ -166,10 +170,15 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
   return res.status(200).json({ reviews });
 }
 
-/** ------------------------ POST ----------------------- */
-/** Create pending review + send moderation email */
+/* --------------------------- POST ---------------------------- */
 async function handlePost(req: NextApiRequest, res: NextApiResponse) {
-  if (!supabase) return res.status(500).json({ error: "Storage not configured" });
+  if (!supabase) {
+    return res.status(500).json({
+      error: "Storage not configured",
+      hasUrl: !!SUPABASE_URL,
+      hasServiceKey: !!SUPABASE_SERVICE_ROLE_KEY,
+    });
+  }
 
   const ct = (req.headers["content-type"] || "").toString().toLowerCase();
   if (!ct.includes("application/json")) {
@@ -188,7 +197,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
     website: String(raw.website ?? "").trim(), // honeypot
   };
 
-  // Honeypot: silently accept
+  // Honeypot
   if (payload.website) return res.status(200).json({ ok: true, skipped: true });
 
   // Validate
@@ -207,7 +216,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   const ip = ipOf(req);
   if (hit(ip)) return res.status(429).json({ error: "Too many requests, slow down." });
 
-  // Insert into Supabase as 'pending'
+  // Insert as pending
   const insert = {
     county: payload.county,
     region: payload.region,
@@ -219,15 +228,10 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
     status: "pending" as const,
   };
 
-  const { data, error } = await supabase
-    .from("reviews")
-    .insert(insert)
-    .select("id")
-    .single();
-
+  const { data, error } = await supabase.from("reviews").insert(insert).select("id").single();
   if (error) return res.status(500).json({ error: error.message });
 
-  // Send moderation email (best effort)
+  // Best-effort moderation email
   if (resend) {
     try {
       const full: Required<ReviewPayload> = {
@@ -248,6 +252,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
         text: emailText(full),
       });
     } catch (e) {
+      // Don’t block the UI if email fails
       console.warn("[reviews] email send failed:", e);
     }
   }
