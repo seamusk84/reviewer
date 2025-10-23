@@ -10,7 +10,7 @@ const supabaseAdmin = createClient(
 );
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Lightweight password check (optional)
+  // Optional lightweight password
   if (ADMIN_PASSWORD) {
     const header = req.headers["x-admin-pass"];
     if (header !== ADMIN_PASSWORD) return res.status(401).json({ error: "Unauthorized" });
@@ -27,7 +27,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.error("[moderate GET] error:", error);
       return res.status(500).json({ error: "Failed to fetch pending reviews." });
     }
-
     return res.status(200).json({ reviews: data });
   }
 
@@ -37,13 +36,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "Invalid request" });
     }
     const status = action === "approve" ? "approved" : "rejected";
-
     const { error } = await supabaseAdmin.from("reviews").update({ status }).eq("id", id);
     if (error) {
       console.error("[moderate POST] update error:", error);
       return res.status(500).json({ error: "Failed to update review." });
     }
-
     return res.status(200).json({ ok: true });
   }
 
