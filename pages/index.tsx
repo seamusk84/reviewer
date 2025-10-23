@@ -16,14 +16,10 @@ function Reviews({ estateId }: { estateId: string | null }) {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!estateId) {
-      setItems([]);
-      return;
-    }
+    if (!estateId) { setItems([]); return; }
     let cancelled = false;
     (async () => {
-      setLoading(true);
-      setError(null);
+      setLoading(true); setError(null);
       try {
         const r = await fetch(`/api/reviews?estateId=${estateId}`);
         const j = await r.json();
@@ -35,9 +31,7 @@ function Reviews({ estateId }: { estateId: string | null }) {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [estateId]);
 
   if (!estateId) return null;
@@ -59,8 +53,6 @@ function Reviews({ estateId }: { estateId: string | null }) {
 }
 
 export default function HomePage() {
-  // For now we keep it simple: enter a known estate UUID from your DB.
-  // (Later we can swap this for your county/town/estate dropdown.)
   const [estateId, setEstateId] = React.useState<string>("");
   const [rating, setRating] = React.useState<number>(5);
   const [title, setTitle] = React.useState<string>("");
@@ -70,13 +62,11 @@ export default function HomePage() {
   const [submitMsg, setSubmitMsg] = React.useState<string | null>(null);
   const [submitErr, setSubmitErr] = React.useState<string | null>(null);
 
-  const selectedEstateId = estateId?.trim() || null;
+  const selectedEstateId = estateId.trim() || null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitting(true);
-    setSubmitMsg(null);
-    setSubmitErr(null);
+    setSubmitting(true); setSubmitMsg(null); setSubmitErr(null);
     try {
       if (!selectedEstateId) throw new Error("Please paste an estate UUID first.");
       if (!body.trim()) throw new Error("Please enter your review text.");
@@ -93,15 +83,13 @@ export default function HomePage() {
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || "Failed to submit review");
       setSubmitMsg("Submitted! Your review will appear once approved.");
-      setTitle("");
-      setBody("");
-      setRating(5);
+      setTitle(""); setBody(""); setRating(5);
     } catch (e: any) {
       setSubmitErr(e.message);
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
   return (
     <>
@@ -118,17 +106,19 @@ export default function HomePage() {
           </p>
         </header>
 
-        {/* SIMPLE SELECTOR: paste an estate UUID for now */}
-        <section className="border rounded p-4 space-y-3">
-          <label className="text-sm font-medium">Estate ID (UUID from your database)</label>
+        {/* ESTATE SELECTION */}
+        <section className="border rounded p-4 space-y-2">
+          <label className="text-sm font-medium" htmlFor="estateId">Estate ID (UUID from your database)</label>
           <input
+            id="estateId"
+            type="text"
             className="border rounded p-2 w-full"
             placeholder="e.g. 6c9c66e4-1c6a-4c39-9d70-2a2e1a3b1c22"
             value={estateId}
             onChange={(e) => setEstateId(e.target.value)}
           />
           <p className="text-xs opacity-70">
-            Tip: You can look this up in Supabase → Table Editor → <code>public.estates</code>.
+            Tip: Find this in Supabase → Table Editor → <code>public.estates</code>.
           </p>
         </section>
 
@@ -143,8 +133,9 @@ export default function HomePage() {
           <form className="space-y-3" onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="text-sm font-medium">Rating</label>
+                <label className="text-sm font-medium" htmlFor="rating">Rating</label>
                 <select
+                  id="rating"
                   className="border rounded p-2 w-full"
                   value={rating}
                   onChange={(e) => setRating(Number(e.target.value))}
@@ -153,8 +144,10 @@ export default function HomePage() {
                 </select>
               </div>
               <div className="md:col-span-2">
-                <label className="text-sm font-medium">Title (optional)</label>
+                <label className="text-sm font-medium" htmlFor="title">Title (optional)</label>
                 <input
+                  id="title"
+                  type="text"
                   className="border rounded p-2 w-full"
                   placeholder="Short summary"
                   value={title}
@@ -164,8 +157,9 @@ export default function HomePage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium">Your review</label>
+              <label className="text-sm font-medium" htmlFor="body">Your review</label>
               <textarea
+                id="body"
                 className="border rounded p-2 w-full min-h-[120px]"
                 placeholder="Share your experience…"
                 value={body}
@@ -176,17 +170,13 @@ export default function HomePage() {
             {submitErr && <p className="text-sm text-red-600">{submitErr}</p>}
             {submitMsg && <p className="text-sm text-green-700">{submitMsg}</p>}
 
-            <button
-              className="px-4 py-2 border rounded"
-              disabled={submitting}
-              type="submit"
-            >
+            <button className="px-4 py-2 border rounded" disabled={submitting} type="submit">
               {submitting ? "Submitting…" : "Submit review"}
             </button>
           </form>
         </section>
 
-        {/* APPROVED REVIEWS LIST */}
+        {/* APPROVED REVIEWS */}
         <section className="border rounded p-4">
           <h2 className="font-medium">Approved reviews</h2>
           <Reviews estateId={selectedEstateId} />
