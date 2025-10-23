@@ -2,6 +2,14 @@ import * as React from "react";
 import Head from "next/head";
 import SuggestEstate from "../components/SuggestEstate";
 
+/* ---------- Types ---------- */
+type Estate = {
+  id: string;
+  name: string | null;
+  town: string | null;
+  county: string | null;
+};
+
 type Review = {
   id: string;
   rating: number;
@@ -10,6 +18,7 @@ type Review = {
   created_at: string;
 };
 
+/* ---------- Reviews list (reads approved via /api/reviews) ---------- */
 function Reviews({ estateId }: { estateId: string | null }) {
   const [items, setItems] = React.useState<Review[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -35,32 +44,36 @@ function Reviews({ estateId }: { estateId: string | null }) {
   }, [estateId]);
 
   if (!estateId) return null;
-  if (loading) return <p style={{opacity:.7, marginTop:12}}>Loading reviews…</p>;
-  if (error) return <p style={{color:"#b91c1c", marginTop:12}}>{error}</p>;
-  if (!items.length) return <p style={{opacity:.7, marginTop:12}}>No reviews yet.</p>;
+  if (loading) return <p className="mt-3 text-sm opacity-70">Loading reviews…</p>;
+  if (error) return <p className="mt-3 text-sm text-red-600">{error}</p>;
+  if (!items.length) return <p className="mt-3 text-sm opacity-70">No reviews yet.</p>;
 
   return (
-    <div style={{marginTop:12}}>
+    <div className="mt-3 space-y-3">
       {items.map((r) => (
-        <div key={r.id} style={{border:"1px solid #e5e7eb", borderRadius:8, padding:12, marginBottom:12}}>
-          <p style={{fontSize:12, opacity:.6}}>{new Date(r.created_at).toLocaleDateString()}</p>
-          <p style={{fontWeight:600}}>{r.title || "(no title)"} • {r.rating}/5</p>
-          <p style={{whiteSpace:"pre-wrap", marginTop:6}}>{r.body}</p>
+        <div key={r.id} className="border rounded p-3">
+          <p className="text-xs opacity-60">{new Date(r.created_at).toLocaleDateString()}</p>
+          <p className="font-medium">{r.title || "(no title)"} • {r.rating}/5</p>
+          <p className="whitespace-pre-wrap mt-1">{r.body}</p>
         </div>
       ))}
     </div>
   );
 }
 
+/* ---------- Page ---------- */
 export default function HomePage() {
-  // 1) read ?estate=<uuid> from URL
-  const [estateId, setEstateId] = React.useState<string>("");
-  React.useEffect(() => {
-    const url = new URL(window.location.href);
-    const q = url.searchParams.get("estate");
-    if (q && !estateId) setEstateId(q);
-  }, []);
+  /* Estates data for dropdowns */
+  const [estates, setEstates] = React.useState<Estate[]>([]);
+  const [loadingEstates, setLoadingEstates] = React.useState(true);
+  const [estatesErr, setEstatesErr] = React.useState<string | null>(null);
 
+  /* Selections */
+  const [county, setCounty] = React.useState<string>("");
+  const [town, setTown] = React.useState<string>("");
+  const [estateId, setEstateId] = React.useState<string>("");
+
+  /* Review form */
   const [rating, setRating] = React.useState<number>(5);
   const [title, setTitle] = React.useState<string>("");
   const [body, setBody] = React.useState<string>("");
@@ -69,14 +82,60 @@ export default function HomePage() {
   const [submitMsg, setSubmitMsg] = React.useState<string | null>(null);
   const [submitErr, setSubmitErr] = React.useState<string | null>(null);
 
-  const selectedEstateId = estateId.trim() || null;
+  /* Load estates once */
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/estates");
+        const j = await r.json();
+        if (!r.ok) throw new Error(j?.error || "Failed to load estates");
+        setEstates(j.estates || []);
+      } catch (e: any) {
+        setEstatesErr(e.message);
+      } finally {
+        setLoadingEstates(false);
+      }
+    })();
+  }, []);
 
+  /* Derived options */
+  const counties = React.useMemo(
+    () => Array.from(new Set(estates.map(e => e.county || "").filter(Boolean))).sort(),
+    [estates]
+  );
+
+  const towns = React.useMemo(
+    () =>
+      Array.from(
+        new Set(
+          estates
+            .filter(e => (e.county || "") === county)
+            .map(e => e.town || "")
+            .filter(Boolean)
+        )
+      ).sort(),
+    [estates, county]
+  );
+
+  const estatesForTown = React.useMemo(
+    () => estates.filter(e => (e.county || "") === county && (e.town || "") === town),
+    [estates, county, town]
+  );
+
+  /* Reset child selections when parent changes */
+  React.useEffect(() => { setTown(""); setEstateId(""); }, [county]);
+  React.useEffect(() => { setEstateId(""); }, [town]);
+
+  const selectedEstateId = estateId || null;
+
+  /* Submit review */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true); setSubmitMsg(null); setSubmitErr(null);
     try {
-      if (!selectedEstateId) throw new Error("Please paste an estate UUID first.");
+      if (!selectedEstateId) throw new Error("Pick an estate first.");
       if (!body.trim()) throw new Error("Please enter your review text.");
+
       const r = await fetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -89,6 +148,7 @@ export default function HomePage() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || "Failed to submit review");
+
       setSubmitMsg("Submitted! Your review will appear once approved.");
       setTitle(""); setBody(""); setRating(5);
     } catch (e: any) {
@@ -98,11 +158,6 @@ export default function HomePage() {
     }
   }
 
-  // inline styles so inputs are guaranteed to show (no Tailwind needed)
-  const box = { border:"1px solid #e5e7eb", borderRadius:8, padding:16, marginTop:8 } as const;
-  const input = { width:"100%", border:"1px solid #d1d5db", borderRadius:6, padding:"8px 10px" } as const;
-  const btn = { padding:"8px 14px", border:"1px solid #d1d5db", borderRadius:6, background:"#fff", cursor:"pointer" } as const;
-
   return (
     <>
       <Head>
@@ -110,90 +165,129 @@ export default function HomePage() {
         <meta name="description" content="Independent reviews of Irish housing estates" />
       </Head>
 
-      <main style={{maxWidth:880, margin:"0 auto", padding:24}}>
-        <header style={{marginBottom:12}}>
-          <h1 style={{fontSize:28, fontWeight:700}}>Ireland Estate Reviews</h1>
-          <p style={{opacity:.8}}>
-            Pick an estate (UUID), submit a review, and we’ll publish it once approved.
-          </p>
+      <main className="max-w-3xl mx-auto p-6 space-y-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold">Ireland Estate Reviews</h1>
+          <p className="text-sm opacity-80">Pick your area, submit a review, we’ll publish it once approved.</p>
         </header>
 
-        {/* ESTATE SELECTION (inline-styled, cannot be hidden by CSS) */}
-        <section style={box}>
-          <label htmlFor="estateId" style={{display:"block", fontWeight:600, marginBottom:6}}>
-            Estate ID (UUID from your database)
-          </label>
-          <input
-            id="estateId"
-            type="text"
-            placeholder="e.g. 6c9c66e4-1c6a-4c39-9d70-2a2e1a3b1c22"
-            value={estateId}
-            onChange={(e) => setEstateId(e.target.value)}
-            style={input}
-          />
-          <p style={{fontSize:12, opacity:.7, marginTop:6}}>
-            Tip: Find this in Supabase → Table Editor → <code>public.estates</code>.
-            You can also set it via the URL: <code>?estate=&lt;uuid&gt;</code>
-          </p>
+        {/* Cascading selectors */}
+        <section className="border rounded p-4 space-y-3">
+          <h2 className="font-medium">Select your area</h2>
+
+          {loadingEstates && <p className="text-sm opacity-70">Loading areas…</p>}
+          {estatesErr && <p className="text-sm text-red-600">{estatesErr}</p>}
+
+          {!loadingEstates && !estatesErr && (
+            <div className="grid gap-3 md:grid-cols-3">
+              <div>
+                <label className="text-sm font-medium">County</label>
+                <select
+                  className="border rounded p-2 w-full"
+                  value={county}
+                  onChange={(e) => setCounty(e.target.value)}
+                >
+                  <option value="">Select county…</option>
+                  {counties.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Town</label>
+                <select
+                  className="border rounded p-2 w-full"
+                  value={town}
+                  onChange={(e) => setTown(e.target.value)}
+                  disabled={!county}
+                >
+                  <option value="">Select town…</option>
+                  {towns.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Estate</label>
+                <select
+                  className="border rounded p-2 w-full"
+                  value={estateId}
+                  onChange={(e) => setEstateId(e.target.value)}
+                  disabled={!town}
+                >
+                  <option value="">Select estate…</option>
+                  {estatesForTown.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name || "(Unnamed)"}{e.town ? `, ${e.town}` : ""}{e.county ? `, ${e.county}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </section>
 
-        {/* SUGGEST AN AREA */}
-        <section style={{marginTop:16}}>
+        {/* “Don’t see your area?” */}
+        <section>
           <SuggestEstate />
         </section>
 
-        {/* REVIEW FORM */}
-        <section style={{...box, marginTop:16}}>
-          <h2 style={{fontWeight:600}}>Write a review</h2>
-          <form onSubmit={handleSubmit}>
-            <div style={{display:"grid", gap:12, gridTemplateColumns:"1fr 2fr"}}>
+        {/* Review form */}
+        <section className="border rounded p-4 space-y-3">
+          <h2 className="font-medium">Write a review</h2>
+          <form className="space-y-3" onSubmit={handleSubmit}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label htmlFor="rating" style={{display:"block", fontSize:14, fontWeight:600, marginBottom:6}}>Rating</label>
+                <label className="text-sm font-medium">Rating</label>
                 <select
-                  id="rating"
+                  className="border rounded p-2 w-full"
                   value={rating}
                   onChange={(e) => setRating(Number(e.target.value))}
-                  style={{...input, height:38}}
                 >
-                  {[5,4,3,2,1].map(n => <option key={n} value={n}>{n}</option>)}
+                  {[5, 4, 3, 2, 1].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
                 </select>
               </div>
-              <div>
-                <label htmlFor="title" style={{display:"block", fontSize:14, fontWeight:600, marginBottom:6}}>Title (optional)</label>
+              <div className="md:col-span-2">
+                <label className="text-sm font-medium">Title (optional)</label>
                 <input
-                  id="title"
-                  type="text"
+                  className="border rounded p-2 w-full"
                   placeholder="Short summary"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  style={input}
                 />
               </div>
             </div>
 
-            <div style={{marginTop:12}}>
-              <label htmlFor="body" style={{display:"block", fontSize:14, fontWeight:600, marginBottom:6}}>Your review</label>
+            <div>
+              <label className="text-sm font-medium">Your review</label>
               <textarea
-                id="body"
+                className="border rounded p-2 w-full min-h-[120px]"
                 placeholder="Share your experience…"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                style={{...input, minHeight:120}}
               />
             </div>
 
-            {submitErr && <p style={{color:"#b91c1c", marginTop:8}}>{submitErr}</p>}
-            {submitMsg && <p style={{color:"#166534", marginTop:8}}>{submitMsg}</p>}
+            {submitErr && <p className="text-sm text-red-600">{submitErr}</p>}
+            {submitMsg && <p className="text-sm text-green-700">{submitMsg}</p>}
 
-            <button disabled={submitting} type="submit" style={{...btn, marginTop:12}}>
+            <button
+              className="px-4 py-2 border rounded"
+              disabled={submitting || !selectedEstateId}
+              type="submit"
+            >
               {submitting ? "Submitting…" : "Submit review"}
             </button>
           </form>
         </section>
 
-        {/* APPROVED REVIEWS */}
-        <section style={{...box, marginTop:16}}>
-          <h2 style={{fontWeight:600}}>Approved reviews</h2>
+        {/* Approved reviews */}
+        <section className="border rounded p-4">
+          <h2 className="font-medium">Approved reviews</h2>
           <Reviews estateId={selectedEstateId} />
         </section>
       </main>
