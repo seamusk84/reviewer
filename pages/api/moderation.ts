@@ -1,72 +1,52 @@
-// pages/api/moderation.ts
+// pages/api/moderate.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const MOD_TOKEN = process.env.MODERATOR_TOKEN || "";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ""; // optional
 
-function unauthorized(res: NextApiResponse) {
-  return res.status(401).json({ ok: false, error: "Unauthorized" });
-}
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+  process.env.SUPABASE_SERVICE_ROLE_KEY as string
+);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (!url || !serviceKey) {
-    return res.status(500).json({ ok: false, error: "Server keys missing" });
+  // Lightweight password check (optional)
+  if (ADMIN_PASSWORD) {
+    const header = req.headers["x-admin-pass"];
+    if (header !== ADMIN_PASSWORD) return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || token !== MOD_TOKEN) return unauthorized(res);
-
-  const supabase = createClient(url, serviceKey);
-
   if (req.method === "GET") {
-    // view=pending|approved|rejected|deleted  (default pending)
-    const view = ((req.query.view as string) || "pending").toLowerCase();
+    const { data, error } = await supabaseAdmin
+      .from("reviews")
+      .select("id, estate_id, rating, title, body, created_at, status")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
 
-    let q = supabase.from("reviews").select("*").order("inserted_at", { ascending: false });
-
-    if (view === "deleted") {
-      q = q.not("deleted_at", "is", null);
-    } else {
-      q = q.is("deleted_at", null).eq("status", view);
+    if (error) {
+      console.error("[moderate GET] error:", error);
+      return res.status(500).json({ error: "Failed to fetch pending reviews." });
     }
 
-    const { data, error } = await q.limit(500);
-    if (error) return res.status(500).json({ ok: false, error: error.message });
-    return res.status(200).json({ ok: true, reviews: data || [] });
+    return res.status(200).json({ reviews: data });
   }
 
   if (req.method === "POST") {
-    // { ids: string[]; action: 'approve'|'reject'|'delete'|'restore' }
-    const { ids, action } = req.body || {};
-    const list: string[] = Array.isArray(ids) ? ids : [];
-    if (!list.length || !["approve", "reject", "delete", "restore"].includes(action)) {
-      return res.status(400).json({ ok: false, error: "Bad payload" });
+    const { id, action } = req.body || {};
+    if (!id || !["approve", "reject"].includes(action)) {
+      return res.status(400).json({ error: "Invalid request" });
+    }
+    const status = action === "approve" ? "approved" : "rejected";
+
+    const { error } = await supabaseAdmin.from("reviews").update({ status }).eq("id", id);
+    if (error) {
+      console.error("[moderate POST] update error:", error);
+      return res.status(500).json({ error: "Failed to update review." });
     }
 
-    if (action === "delete") {
-      const { error } = await supabase
-        .from("reviews")
-        .update({ deleted_at: new Date().toISOString() })
-        .in("id", list);
-      if (error) return res.status(500).json({ ok: false, error: error.message });
-      return res.status(200).json({ ok: true, status: "deleted" });
-    }
-
-    if (action === "restore") {
-      const { error } = await supabase.from("reviews").update({ deleted_at: null }).in("id", list);
-      if (error) return res.status(500).json({ ok: false, error: error.message });
-      return res.status(200).json({ ok: true, status: "restored" });
-    }
-
-    const newStatus = action === "approve" ? "approved" : "rejected";
-    const { error } = await supabase.from("reviews").update({ status: newStatus }).in("id", list);
-    if (error) return res.status(500).json({ ok: false, error: error.message });
-    return res.status(200).json({ ok: true, status: newStatus });
+    return res.status(200).json({ ok: true });
   }
 
-  res.setHeader("Allow", ["GET", "POST"]);
-  return res.status(405).json({ ok: false, error: "Method not allowed" });
+  res.setHeader("Allow", "GET, POST");
+  return res.status(405).end("Method Not Allowed");
 }
