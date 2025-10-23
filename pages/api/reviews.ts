@@ -2,26 +2,31 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 
-// Server client (uses service role; server-only)
+// Create Supabase clients
+// --- Admin client (uses service_role key, bypasses RLS)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL as string,
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 );
 
-// Public client (uses anon key; respects RLS)
+// --- Public client (uses anon key, respects RLS)
 const supabaseAnon = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL as string,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
 );
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Handle POST → create a new review
   if (req.method === "POST") {
     try {
       const { estateId, rating, title, body } = req.body || {};
+
+      // Basic validation
       if (!estateId || !rating || !body) {
         return res.status(400).json({ error: "Missing estateId, rating, or body." });
       }
 
+      // Insert as 'pending' for moderation
       const { data, error } = await supabaseAdmin
         .from("reviews")
         .insert({
@@ -46,13 +51,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  // Handle GET → fetch approved reviews for one estate
   if (req.method === "GET") {
     const { estateId } = req.query;
+
     if (!estateId || typeof estateId !== "string") {
       return res.status(400).json({ error: "estateId is required." });
     }
 
-    // Use anon client: RLS will only return approved reviews
     const { data, error } = await supabaseAnon
       .from("reviews")
       .select("id, rating, title, body, created_at")
@@ -67,6 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ reviews: data });
   }
 
+  // Method not allowed
   res.setHeader("Allow", "GET, POST");
   return res.status(405).end("Method Not Allowed");
 }
