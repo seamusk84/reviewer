@@ -39,10 +39,9 @@ export default function Header() {
             <span className="brand-text">StreetSage</span>
           </a>
 
-          <nav className="nav" aria-label="Primary">
-            <a href="/">Home</a>
-            <a href="/admin/moderate">Moderate</a>
-          </nav>
+          <nav className="...">
+  <a href="/">Home</a>
+</nav>
         </div>
       </header>
     </>
