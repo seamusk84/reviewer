@@ -1,237 +1,78 @@
 // pages/admin/moderate.tsx
-import React from "react";
+import { useEffect, useState } from "react";
 
 type Review = {
   id: string;
-  inserted_at: string;
-  county: string;
-  town: string;
-  estate: string;
+  estate_id: string | null;
   rating: number;
   title: string | null;
   body: string | null;
-  name: string | null;
-  email: string | null;
+  created_at: string;
   status: "pending" | "approved" | "rejected";
 };
 
-type View = "pending" | "approved" | "rejected" | "deleted";
+export default function ModeratePage() {
+  const [items, setItems] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pass, setPass] = useState("");
 
-const slug = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  const headers: HeadersInit = {};
+  if (pass) headers["x-admin-pass"] = pass;
 
-export default function Moderate() {
-  const [token, setToken] = React.useState("");
-  const [view, setView] = React.useState<View>("pending");
-  const [reviews, setReviews] = React.useState<Review[]>([]);
-  const [selected, setSelected] = React.useState<Set<string>>(new Set());
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const load = async () => {
+    setLoading(true);
+    const r = await fetch("/api/moderate", { headers });
+    const j = await r.json();
+    setItems(j.reviews || []);
+    setLoading(false);
+  };
 
-  React.useEffect(() => {
-    setToken(localStorage.getItem("modToken") || "");
-  }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
-  function toggle(id: string) {
-    setSelected(prev => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
+  const act = async (id: string, action: "approve" | "reject") => {
+    await fetch("/api/moderate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({ id, action }),
     });
-  }
-
-  function toggleAll() {
-    setSelected(selected.size === reviews.length ? new Set() : new Set(reviews.map(r => r.id)));
-  }
-
-  async function load() {
-    try {
-      setLoading(true);
-      setError(null);
-      setSelected(new Set());
-      const res = await fetch(`/api/moderation?view=${view}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to load");
-      setReviews(json.reviews || []);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function act(action: "approve" | "reject" | "delete" | "restore", ids?: string[]) {
-    const list = (ids && ids.length) ? ids : Array.from(selected);
-    if (!list.length) return;
-    if (action === "delete" && !confirm(`Delete ${list.length} review(s)?`)) return;
-
-    const prev = reviews;
-    setReviews(r => r.filter(x => !list.includes(x.id)));
-    setSelected(new Set());
-
-    try {
-      const res = await fetch("/api/moderation", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ ids: list, action }),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Action failed");
-    } catch (e: any) {
-      setError(e.message);
-      setReviews(prev); // rollback
-    }
-  }
-
-  async function exportCsvCurrentView() {
-    try {
-      setError(null);
-      const res = await fetch(`/api/export-reviews?view=${view}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({} as any));
-        throw new Error(j?.error || `Export failed (${res.status})`);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const cd = res.headers.get("Content-Disposition") || "";
-      const match = /filename="([^"]+)"/i.exec(cd);
-      const filename = match?.[1] || `reviews-${view}.csv`;
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
-
-  async function exportCsvSelected() {
-    try {
-      setError(null);
-      const ids = Array.from(selected);
-      if (!ids.length) return;
-      const res = await fetch("/api/export-reviews", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ ids, view }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({} as any));
-        throw new Error(j?.error || `Export failed (${res.status})`);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const cd = res.headers.get("Content-Disposition") || "";
-      const match = /filename="([^"]+)"/i.exec(cd);
-      const filename = match?.[1] || `reviews-selected.csv`;
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
+    await load();
+  };
 
   return (
-    <div style={{ maxWidth: 1000, margin: "32px auto", padding: "0 16px" }}>
-      <h1>Moderator</h1>
-      <p className="small">Enter password → choose view → load → bulk actions / export CSV.</p>
+    <div className="p-6 max-w-3xl mx-auto space-y-4">
+      <h1 className="text-2xl font-semibold">Pending reviews</h1>
 
-      <div className="card" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          className="input"
-          type="password"
-          placeholder="Moderator password"
-          value={token}
-          onChange={(e) => {
-            setToken(e.target.value);
-            localStorage.setItem("modToken", e.target.value);
-          }}
-          style={{ maxWidth: 260 }}
-        />
-        <select className="input" value={view} onChange={(e) => setView(e.target.value as View)} style={{ maxWidth: 180 }}>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="deleted">Deleted</option>
-        </select>
-        <button className="button" onClick={load} disabled={!token || loading}>
-          {loading ? "Loading…" : "Load"}
-        </button>
-        <button className="button" onClick={exportCsvCurrentView} disabled={!token || loading}>
-          Export current view (CSV)
-        </button>
-        <button className="button secondary" onClick={exportCsvSelected} disabled={selected.size === 0 || loading}>
-          Export selected (CSV)
-        </button>
-        {error && <span className="small" style={{ color: "#ffbdbd", marginLeft: 8 }}>{error}</span>}
-      </div>
+      {process.env.NEXT_PUBLIC_NEEDS_ADMIN_PASS && (
+        <div className="flex gap-2">
+          <input
+            className="border rounded p-2 flex-1"
+            placeholder="Admin password"
+            type="password"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+          />
+          <button className="border rounded px-3" onClick={load}>Unlock</button>
+        </div>
+      )}
 
-      <div className="card" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input type="checkbox" checked={selected.size === reviews.length && reviews.length > 0} onChange={toggleAll} />
-          Select all ({selected.size}/{reviews.length})
-        </label>
-        <button className="button" onClick={() => act("approve")} disabled={selected.size === 0 || view === "approved"}>
-          Approve selected
-        </button>
-        <button className="button secondary" onClick={() => act("reject")} disabled={selected.size === 0 || view === "rejected"}>
-          Reject selected
-        </button>
-        {view === "deleted" ? (
-          <button className="button" onClick={() => act("restore")} disabled={selected.size === 0}>
-            Restore selected
-          </button>
-        ) : (
-          <button className="button secondary" onClick={() => act("delete")} disabled={selected.size === 0}>
-            Delete selected
-          </button>
-        )}
-      </div>
+      {loading && <p>Loading…</p>}
+      {!loading && items.length === 0 && <p>No pending reviews.</p>}
 
-      <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-        {reviews.map((r) => (
-          <div key={r.id} className="card">
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
-              <strong>{r.county} / {r.town} / {r.estate}</strong>
-              <span style={{ color: "#9db0ff" }}>{new Date(r.inserted_at).toLocaleString()}</span>
-              <span>{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span>
-              <span style={{ marginLeft: "auto" }}>
-                <a href={`/${slug(r.county)}/${slug(r.town)}/${slug(r.estate)}`} style={{ color: "var(--brand)" }} target="_blank" rel="noreferrer">View page →</a>
-              </span>
-            </div>
-            {r.title && <p style={{ marginTop: 6 }}><em>{r.title}</em></p>}
-            {r.body && <p style={{ marginTop: 6 }}>{r.body}</p>}
-            <p className="small" style={{ color: "#9db0ff" }}>By {r.name || "Anonymous"} {r.email ? `• ${r.email}` : ""}</p>
-            <div className="row" style={{ marginTop: 8, gap: 8 }}>
-              {view !== "approved" && <button className="button" onClick={() => act("approve", [r.id])}>Approve</button>}
-              {view !== "rejected" && <button className="button secondary" onClick={() => act("reject", [r.id])}>Reject</button>}
-              {view === "deleted"
-                ? <button className="button" onClick={() => act("restore", [r.id])}>Restore</button>
-                : <button className="button secondary" onClick={() => act("delete", [r.id])}>Delete</button>}
-            </div>
+      {items.map((r) => (
+        <div key={r.id} className="border rounded p-3 space-y-2">
+          <p className="text-sm opacity-70">{new Date(r.created_at).toLocaleString()}</p>
+          <p className="font-medium">{r.title || "(no title)"} • {r.rating}/5</p>
+          <p className="whitespace-pre-wrap">{r.body}</p>
+          <div className="flex gap-2">
+            <button className="px-3 py-1 border rounded" onClick={() => act(r.id, "approve")}>
+              Approve
+            </button>
+            <button className="px-3 py-1 border rounded" onClick={() => act(r.id, "reject")}>
+              Reject
+            </button>
           </div>
-        ))}
-        {!loading && reviews.length === 0 && <p>No reviews for this view.</p>}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }
