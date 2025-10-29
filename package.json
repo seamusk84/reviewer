@@ -33,3 +33,9 @@
     "@next/swc-linux-arm64-musl": "14.2.5"
   }
 }
+
+{
+  "scripts": {
+    "build:places": "node tools/make-places-from-cso.js"
+  }
+}
