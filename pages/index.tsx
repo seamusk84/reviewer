@@ -3,9 +3,9 @@ import * as React from "react";
 import Head from "next/head";
 import { supabase } from "../lib/supabaseClient";
 
-/** Types */
+/** ---------- Types ---------- */
 type County = { id: string; name: string };
-type Town = { id: string; name: string; county_id: string };
+type Town   = { id: string; name: string; county_id: string };
 type Estate = { id: string; name: string; town_id: string };
 type Review = {
   id: string;
@@ -16,11 +16,29 @@ type Review = {
   estate_id: string;
 };
 
-/** Utils */
+/** ---------- Utils ---------- */
 const slug = (s: string) =>
   s.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
-/** 32 counties (fallback base) */
+/** Ultra-safe CSV loader for files in /public/data */
+async function fetchCSV(path: string): Promise<string[][]> {
+  try {
+    const res = await fetch(path, { cache: "no-store" });
+    if (!res.ok) return [];
+    const text = await res.text();
+    if (!text) return [];
+    return text
+      .replace(/^\uFEFF/, "") // strip BOM
+      .split(/\r?\n/)
+      .map((r) => r.trim())
+      .filter(Boolean)
+      .map((r) => r.split(",").map((c) => c.trim()));
+  } catch {
+    return [];
+  }
+}
+
+/** ---------- 32 counties fallback (always available) ---------- */
 const COUNTY_LIST: County[] = [
   "Antrim","Armagh","Carlow","Cavan","Clare","Cork","Derry","Donegal","Down","Dublin",
   "Fermanagh","Galway","Kerry","Kildare","Kilkenny","Laois","Leitrim","Limerick","Longford",
@@ -28,8 +46,11 @@ const COUNTY_LIST: County[] = [
   "Waterford","Westmeath","Wexford","Wicklow",
 ].map((name) => ({ id: slug(name), name }));
 
-/** Error boundary to avoid white screen */
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+/** ---------- Error boundary to avoid white screen ---------- */
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
   constructor(props: any) { super(props); this.state = { hasError: false }; }
   static getDerivedStateFromError() { return { hasError: true }; }
   componentDidCatch(err: any, info: any) { console.error("StreetSage error:", err, info); }
@@ -45,7 +66,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-/** Data hooks — DB first, otherwise fail-safe to [] */
+/** ---------- Data hooks (DB first, CSV fallback) ---------- */
 function useCounties() {
   const [counties, set] = React.useState<County[]>(COUNTY_LIST);
   const [loading, setLoading] = React.useState(true);
@@ -55,11 +76,9 @@ function useCounties() {
     (async () => {
       try {
         const { data, error } = await supabase.from("counties").select("id,name").order("name");
-        if (!cancel) {
-          if (!error && Array.isArray(data) && data.length) set(data as County[]);
-        }
-      } catch (e) {
-        console.warn("Counties load failed (fallback to static).", e);
+        if (!cancel && !error && Array.isArray(data) && data.length) set(data as County[]);
+      } catch {
+        // ignore -> fallback remains COUNTY_LIST
       } finally {
         if (!cancel) setLoading(false);
       }
@@ -76,21 +95,37 @@ function useTowns(countyId: string | null) {
 
   React.useEffect(() => {
     let cancel = false;
-    if (!countyId) { set([]); return; }
     (async () => {
+      if (!countyId) { set([]); return; }
       setLoading(true);
+
       try {
+        // Try DB
         const { data, error } = await supabase
           .from("towns")
           .select("id,name,county_id")
           .eq("county_id", countyId)
           .order("name");
-        if (!cancel) {
-          set(!error && Array.isArray(data) ? (data as Town[]) : []);
+
+        if (!cancel && !error && Array.isArray(data) && data.length) {
+          set(data as Town[]);
+          return;
         }
-      } catch (e) {
-        console.warn("Towns load failed", e);
-        if (!cancel) set([]);
+
+        // Fallback to CSV: /public/data/places.csv with columns: Town,County
+        const rows = await fetchCSV("/data/places.csv");
+        const body = rows[0]?.[0]?.toLowerCase().includes("town") ? rows.slice(1) : rows;
+        const fromCsv: Town[] = body
+          .filter((r) => r.length >= 2)
+          .map(([townName, countyName]) => ({
+            id: slug(`${townName}-${slug(countyName)}`),
+            name: townName,
+            county_id: slug(countyName),
+          }))
+          .filter((t) => t.county_id === countyId)
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        if (!cancel) set(fromCsv);
       } finally {
         if (!cancel) setLoading(false);
       }
@@ -109,22 +144,42 @@ function useEstates(town: Town | null) {
 
   React.useEffect(() => {
     let cancel = false;
-    if (!town) { set([]); return; }
     (async () => {
+      if (!town) { set([]); return; }
       setLoading(true);
+
       try {
+        // Try DB
         const { data, error } = await supabase
           .from("estates")
           .select("id,name,town_id")
           .eq("town_id", town.id)
           .order("name");
-        if (!cancel) {
-          const list = !error && Array.isArray(data) ? (data as Estate[]) : [];
-          set(list.length ? list : [{ id: `${town.id}__whole`, name: WHOLE_AREA, town_id: town.id }]);
+
+        if (!cancel && !error && Array.isArray(data) && data.length) {
+          set(data as Estate[]);
+          return;
         }
-      } catch (e) {
-        console.warn("Estates load failed", e);
-        if (!cancel) set([{ id: `${town.id}__whole`, name: WHOLE_AREA, town_id: town.id }]);
+
+        // Fallback to CSV: /public/data/estates.csv with columns: Estate,Town
+        const rows = await fetchCSV("/data/estates.csv");
+        const body = rows[0]?.[0]?.toLowerCase().includes("estate") ? rows.slice(1) : rows;
+        const fromCsv: Estate[] = body
+          .filter((r) => r.length >= 2)
+          .map(([estateName, townName]) => ({
+            id: slug(`${estateName}-${townName}`),
+            name: estateName,
+            town_id: slug(`${townName}-${town.county_id}`),
+          }))
+          .filter((e) => e.town_id === town.id)
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        const withWhole =
+          fromCsv.length > 0
+            ? fromCsv
+            : [{ id: `${town.id}__whole`, name: WHOLE_AREA, town_id: town.id }];
+
+        if (!cancel) set(withWhole);
       } finally {
         if (!cancel) setLoading(false);
       }
@@ -168,58 +223,7 @@ function useReviews(estateId: string | null) {
   return { items, loading, error };
 }
 
-/** Inline Suggest Area form (writes to Supabase when clicked) */
-function SuggestAreaForm({ countyId, townId }: { countyId: string | null; townId: string | null }) {
-  const [estateName, setEstateName] = React.useState("");
-  const [email, setEmail] = React.useState("");
-  const [status, setStatus] = React.useState<"idle" | "saving" | "ok" | "err">("idle");
-  const disabled = !countyId || !townId || !estateName;
-
-  async function submit() {
-    try {
-      setStatus("saving");
-      const { error } = await supabase.from("area_suggestions").insert({
-        county_id: countyId,
-        town_id: townId,
-        estate_name: estateName,
-        contact_email: email || null,
-      });
-      if (error) throw error;
-      setStatus("ok");
-      setEstateName("");
-      setEmail("");
-    } catch (e) {
-      console.error(e);
-      setStatus("err");
-    }
-  }
-
-  return (
-    <div className="mt16">
-      <div className="grid">
-        <input
-          className="select"
-          placeholder="Estate/Area name"
-          value={estateName}
-          onChange={(e) => setEstateName(e.target.value)}
-        />
-        <input
-          className="select"
-          placeholder="(Optional) contact email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-      </div>
-      <button className="btn mt16" disabled={disabled || status === "saving"} onClick={submit}>
-        {status === "saving" ? "Sending…" : "Suggest this area"}
-      </button>
-      {status === "ok" && <div className="small mt16">Thanks — we got your suggestion.</div>}
-      {status === "err" && <div className="small mt16">Couldn’t send. Try again in a minute.</div>}
-    </div>
-  );
-}
-
-/** Page */
+/** ---------- Page ---------- */
 export default function Home() {
   const { counties, loading: countiesLoading } = useCounties();
 
@@ -240,7 +244,6 @@ export default function Home() {
   React.useEffect(() => { setTownId(null); setEstateId(null); }, [countyId]);
   React.useEffect(() => { setEstateId(null); }, [townId]);
 
-  // Ensure arrays are always arrays during render
   const countyList = Array.isArray(counties) ? counties : [];
   const townList = Array.isArray(towns) ? towns : [];
   const estateList = Array.isArray(estates) ? estates : [];
@@ -261,6 +264,7 @@ export default function Home() {
 
         <ErrorBoundary>
           <main className="card">
+            {/* County / Town */}
             <div className="grid">
               <div>
                 <label className="small">County</label>
@@ -294,6 +298,7 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Estate/Area */}
             <div className="mt16">
               <label className="small">Estate/Area</label>
               <select
@@ -310,6 +315,7 @@ export default function Home() {
               {estatesLoading && <div className="small mt16">Loading estates…</div>}
             </div>
 
+            {/* CTA */}
             <div className="mt24">
               <button
                 className="btn"
@@ -322,6 +328,7 @@ export default function Home() {
 
             <hr />
 
+            {/* Reviews */}
             <section id="reviews" className="mt16">
               <div className="muted small">Reviews</div>
               {!estateId && <div className="mt8 muted">Pick an estate/area to see recent reviews.</div>}
@@ -338,14 +345,6 @@ export default function Home() {
                   <div className="small muted">{new Date(r.created_at).toLocaleDateString()}</div>
                 </article>
               ))}
-            </section>
-
-            <hr />
-
-            <section className="mt16">
-              <div className="muted small">Don’t see your estate/area?</div>
-              <p className="mt8">Suggest it here — no email app needed.</p>
-              <SuggestAreaForm countyId={countyId} townId={townId} />
             </section>
           </main>
         </ErrorBoundary>
