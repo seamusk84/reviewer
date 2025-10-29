@@ -223,6 +223,76 @@ function useReviews(estateId: string | null) {
   return { items, loading, error };
 }
 
+/** ---------- Suggest Area Form (requires County & Town) ---------- */
+function SuggestAreaForm({
+  countyId, townId, counties, towns,
+}: {
+  countyId: string | null;
+  townId: string | null;
+  counties: County[];
+  towns: Town[];
+}) {
+  const [estateName, setEstateName] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [status, setStatus] = React.useState<"idle"|"saving"|"ok"|"err">("idle");
+
+  const county = counties.find(c => c.id === countyId) || null;
+  const town   = towns.find(t => t.id === townId) || null;
+  const disabled = !county || !town || !estateName;
+
+  async function submit() {
+    try {
+      setStatus("saving");
+      const { error } = await supabase.from("area_suggestions").insert({
+        county_id: county!.id,
+        town_id: town!.id,
+        estate_name: estateName,
+        contact_email: email || null,
+        status: "pending",
+      });
+      if (error) throw error;
+      setStatus("ok");
+      setEstateName("");
+      setEmail("");
+    } catch (e) {
+      console.error(e);
+      setStatus("err");
+    }
+  }
+
+  return (
+    <div className="mt16">
+      <div className="small muted">Your selection</div>
+      <div className="mt8">
+        <span className="badge" style={{marginRight:8}}>County: {county?.name ?? "—"}</span>
+        <span className="badge">Town: {town?.name ?? "—"}</span>
+      </div>
+
+      <div className="grid mt16">
+        <input
+          className="select"
+          placeholder="Estate/Area name"
+          value={estateName}
+          onChange={(e) => setEstateName(e.target.value)}
+        />
+        <input
+          className="select"
+          placeholder="(Optional) contact email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+      </div>
+
+      <button className="btn mt16" disabled={disabled || status==="saving"} onClick={submit}>
+        {status === "saving" ? "Sending…" : "Suggest this area"}
+      </button>
+      {status === "ok" && <div className="small mt16">Thanks — we got your suggestion.</div>}
+      {status === "err" && <div className="small mt16">Couldn’t send. Try again in a minute.</div>}
+      <div className="small mt16 muted">Tip: pick County and Town above before suggesting.</div>
+    </div>
+  );
+}
+
 /** ---------- Page ---------- */
 export default function Home() {
   const { counties, loading: countiesLoading } = useCounties();
@@ -345,6 +415,20 @@ export default function Home() {
                   <div className="small muted">{new Date(r.created_at).toLocaleDateString()}</div>
                 </article>
               ))}
+            </section>
+
+            <hr />
+
+            {/* Suggest Area (requires County + Town) */}
+            <section className="mt16">
+              <div className="muted small">Don’t see your estate/area?</div>
+              <p className="mt8">Pick a County and Town above, then suggest the Estate/Area here.</p>
+              <SuggestAreaForm
+                countyId={countyId}
+                townId={townId}
+                counties={countyList}
+                towns={townList}
+              />
             </section>
           </main>
         </ErrorBoundary>
