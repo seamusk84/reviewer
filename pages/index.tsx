@@ -20,7 +20,7 @@ type Review = {
 const slug = (s: string) =>
   s.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
-/** Ultra-safe CSV loader for files in /public/data */
+/** CSV helper (used for fallbacks) */
 async function fetchCSV(path: string): Promise<string[][]> {
   try {
     const res = await fetch(path, { cache: "no-store" });
@@ -28,7 +28,7 @@ async function fetchCSV(path: string): Promise<string[][]> {
     const text = await res.text();
     if (!text) return [];
     return text
-      .replace(/^\uFEFF/, "") // strip BOM
+      .replace(/^\uFEFF/, "")
       .split(/\r?\n/)
       .map((r) => r.trim())
       .filter(Boolean)
@@ -38,7 +38,7 @@ async function fetchCSV(path: string): Promise<string[][]> {
   }
 }
 
-/** ---------- 32 counties fallback (always available) ---------- */
+/** ---------- 32 counties fallback ---------- */
 const COUNTY_LIST: County[] = [
   "Antrim","Armagh","Carlow","Cavan","Clare","Cork","Derry","Donegal","Down","Dublin",
   "Fermanagh","Galway","Kerry","Kildare","Kilkenny","Laois","Leitrim","Limerick","Longford",
@@ -46,7 +46,7 @@ const COUNTY_LIST: County[] = [
   "Waterford","Westmeath","Wexford","Wicklow",
 ].map((name) => ({ id: slug(name), name }));
 
-/** ---------- Error boundary to avoid white screen ---------- */
+/** ---------- Error boundary ---------- */
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean }
@@ -77,9 +77,7 @@ function useCounties() {
       try {
         const { data, error } = await supabase.from("counties").select("id,name").order("name");
         if (!cancel && !error && Array.isArray(data) && data.length) set(data as County[]);
-      } catch {
-        // ignore -> fallback remains COUNTY_LIST
-      } finally {
+      } catch {} finally {
         if (!cancel) setLoading(false);
       }
     })();
@@ -100,19 +98,16 @@ function useTowns(countyId: string | null) {
       setLoading(true);
 
       try {
-        // Try DB
         const { data, error } = await supabase
-          .from("towns")
-          .select("id,name,county_id")
-          .eq("county_id", countyId)
-          .order("name");
+          .from("towns").select("id,name,county_id")
+          .eq("county_id", countyId).order("name");
 
         if (!cancel && !error && Array.isArray(data) && data.length) {
           set(data as Town[]);
           return;
         }
 
-        // Fallback to CSV: /public/data/places.csv with columns: Town,County
+        // CSV fallback: /public/data/places.csv  (Town,County)
         const rows = await fetchCSV("/data/places.csv");
         const body = rows[0]?.[0]?.toLowerCase().includes("town") ? rows.slice(1) : rows;
         const fromCsv: Town[] = body
@@ -147,21 +142,17 @@ function useEstates(town: Town | null) {
     (async () => {
       if (!town) { set([]); return; }
       setLoading(true);
-
       try {
-        // Try DB
         const { data, error } = await supabase
-          .from("estates")
-          .select("id,name,town_id")
-          .eq("town_id", town.id)
-          .order("name");
+          .from("estates").select("id,name,town_id")
+          .eq("town_id", town.id).order("name");
 
         if (!cancel && !error && Array.isArray(data) && data.length) {
           set(data as Estate[]);
           return;
         }
 
-        // Fallback to CSV: /public/data/estates.csv with columns: Estate,Town
+        // CSV fallback: /public/data/estates.csv  (Estate,Town)
         const rows = await fetchCSV("/data/estates.csv");
         const body = rows[0]?.[0]?.toLowerCase().includes("estate") ? rows.slice(1) : rows;
         const fromCsv: Estate[] = body
@@ -223,7 +214,7 @@ function useReviews(estateId: string | null) {
   return { items, loading, error };
 }
 
-/** ---------- Suggest Area Form (requires County & Town) ---------- */
+/** ---------- Suggest Area (requires County & Town) ---------- */
 function SuggestAreaForm({
   countyId, townId, counties, towns,
 }: {
@@ -267,28 +258,61 @@ function SuggestAreaForm({
         <span className="badge" style={{marginRight:8}}>County: {county?.name ?? "—"}</span>
         <span className="badge">Town: {town?.name ?? "—"}</span>
       </div>
-
       <div className="grid mt16">
-        <input
-          className="select"
-          placeholder="Estate/Area name"
-          value={estateName}
-          onChange={(e) => setEstateName(e.target.value)}
-        />
-        <input
-          className="select"
-          placeholder="(Optional) contact email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
+        <input className="select" placeholder="Estate/Area name" value={estateName} onChange={(e)=>setEstateName(e.target.value)} />
+        <input className="select" placeholder="(Optional) contact email" value={email} onChange={(e)=>setEmail(e.target.value)} />
       </div>
-
       <button className="btn mt16" disabled={disabled || status==="saving"} onClick={submit}>
-        {status === "saving" ? "Sending…" : "Suggest this area"}
+        {status==="saving" ? "Sending…" : "Suggest this area"}
       </button>
-      {status === "ok" && <div className="small mt16">Thanks — we got your suggestion.</div>}
-      {status === "err" && <div className="small mt16">Couldn’t send. Try again in a minute.</div>}
+      {status==="ok" && <div className="small mt16">Thanks — we got your suggestion.</div>}
+      {status==="err" && <div className="small mt16">Couldn’t send. Try again in a minute.</div>}
       <div className="small mt16 muted">Tip: pick County and Town above before suggesting.</div>
+    </div>
+  );
+}
+
+/** ---------- Rolling News ---------- */
+function NewsTicker() {
+  const [items, setItems] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/news");
+        const j = await res.json();
+        if (!cancel) setItems(Array.isArray(j?.items) ? j.items : []);
+      } catch {
+        if (!cancel) setItems([]);
+      }
+    })();
+    return () => { cancel = true; };
+  }, []);
+
+  if (!items.length) return null;
+
+  return (
+    <div style={{
+      overflow: "hidden",
+      whiteSpace: "nowrap",
+      border: "1px solid rgba(0,0,0,.08)",
+      borderRadius: 12,
+      padding: "8px 12px",
+      marginBottom: 16,
+      background: "var(--card)",
+    }}>
+      <div className="small" style={{ display: "inline-block", animation: "ticker 28s linear infinite" }}>
+        {items.map((t, i) => (
+          <span key={i} style={{ marginRight: 32 }}>• {t}</span>
+        ))}
+      </div>
+      <style>{`
+        @keyframes ticker {
+          0%   { transform: translateX(100%); }
+          100% { transform: translateX(-100%); }
+        }
+      `}</style>
     </div>
   );
 }
@@ -315,7 +339,7 @@ export default function Home() {
   React.useEffect(() => { setEstateId(null); }, [townId]);
 
   const countyList = Array.isArray(counties) ? counties : [];
-  const townList = Array.isArray(towns) ? towns : [];
+  const townList   = Array.isArray(towns) ? towns : [];
   const estateList = Array.isArray(estates) ? estates : [];
   const reviewList = Array.isArray(reviews) ? reviews : [];
 
@@ -332,37 +356,27 @@ export default function Home() {
           <div className="sub">Find resident insights – County → Town → Estate/Area</div>
         </header>
 
+        {/* Rolling News */}
+        <NewsTicker />
+
         <ErrorBoundary>
           <main className="card">
             {/* County / Town */}
             <div className="grid">
               <div>
                 <label className="small">County</label>
-                <select
-                  className="select mt8"
-                  value={countyId ?? ""}
-                  onChange={(e) => setCountyId(e.target.value || null)}
-                >
+                <select className="select mt8" value={countyId ?? ""} onChange={(e)=>setCountyId(e.target.value || null)}>
                   <option value="">Select a county</option>
-                  {countyList.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                  {countyList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 {countiesLoading && <div className="small mt16">Loading counties…</div>}
               </div>
 
               <div>
                 <label className="small">Town</label>
-                <select
-                  className="select mt8"
-                  value={townId ?? ""}
-                  onChange={(e) => setTownId(e.target.value || null)}
-                  disabled={!countyId}
-                >
+                <select className="select mt8" value={townId ?? ""} onChange={(e)=>setTownId(e.target.value || null)} disabled={!countyId}>
                   <option value="">{countyId ? "Select a town" : "Select a county first"}</option>
-                  {townList.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
+                  {townList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
                 {townsLoading && <div className="small mt16">Loading towns…</div>}
               </div>
@@ -371,27 +385,16 @@ export default function Home() {
             {/* Estate/Area */}
             <div className="mt16">
               <label className="small">Estate/Area</label>
-              <select
-                className="select mt8"
-                value={estateId ?? ""}
-                onChange={(e) => setEstateId(e.target.value || null)}
-                disabled={!townId}
-              >
+              <select className="select mt8" value={estateId ?? ""} onChange={(e)=>setEstateId(e.target.value || null)} disabled={!townId}>
                 <option value="">{townId ? "Select an estate/area" : "Select a town first"}</option>
-                {estateList.map((e) => (
-                  <option key={e.id} value={e.id}>{e.name}</option>
-                ))}
+                {estateList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
               </select>
               {estatesLoading && <div className="small mt16">Loading estates…</div>}
             </div>
 
             {/* CTA */}
             <div className="mt24">
-              <button
-                className="btn"
-                disabled={!estateId}
-                onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })}
-              >
+              <button className="btn" disabled={!estateId} onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })}>
                 View reviews
               </button>
             </div>
@@ -404,9 +407,7 @@ export default function Home() {
               {!estateId && <div className="mt8 muted">Pick an estate/area to see recent reviews.</div>}
               {estateId && reviewsLoading && <div className="mt8">Loading reviews…</div>}
               {estateId && reviewsError && <div className="mt8">Couldn’t load reviews: {reviewsError}</div>}
-              {estateId && !reviewsLoading && !reviewsError && reviewList.length === 0 && (
-                <div className="mt8 muted">No reviews yet for this selection.</div>
-              )}
+              {estateId && !reviewsLoading && !reviewsError && reviewList.length === 0 && <div className="mt8 muted">No reviews yet for this selection.</div>}
               {reviewList.map((r) => (
                 <article key={r.id} className="review">
                   <div className="badge">★ {r.rating}/5</div>
@@ -419,7 +420,7 @@ export default function Home() {
 
             <hr />
 
-            {/* Suggest Area (requires County + Town) */}
+            {/* Suggest Area */}
             <section className="mt16">
               <div className="muted small">Don’t see your estate/area?</div>
               <p className="mt8">Pick a County and Town above, then suggest the Estate/Area here.</p>
