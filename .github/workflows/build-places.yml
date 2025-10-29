@@ -1,19 +1,13 @@
-name: Build places.csv
+name: Build Places from CSO
 
 on:
   workflow_dispatch:
-    inputs:
-      only_counties:
-        description: "Comma-separated counties to include (e.g., Dublin,Kildare)"
-        required: false
-        default: ""
-      max_towns:
-        description: "Limit number of towns (0 = all)"
-        required: false
-        default: "0"
-
-permissions:
-  contents: write
+  push:
+    branches: [ main ]
+    paths:
+      - "public/data/cso_bua_2022.csv"
+      - "tools/make-places-from-cso.js"
+      - ".github/workflows/build-places.yml"
 
 jobs:
   build:
@@ -25,25 +19,22 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: 20
 
-      - name: Run builder
-        env:
-          ONLY_COUNTIES: ${{ github.event.inputs.only_counties }}
-          MAX_TOWNS: ${{ github.event.inputs.max_towns }}
-          SLEEP_MS: "1500"
+      - name: Build places.csv from CSO file
         run: |
-          node --version
-          node tools/build-places.mjs
+          npm run build:places
+          echo "Changed files:"
+          git status --porcelain
 
-      - name: Commit changes
+      - name: Commit updated places.csv (if changed)
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add public/data/places.csv
-          if git diff --staged --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "build: update places.csv (counties='${{ github.event.inputs.only_counties }}', max_towns='${{ github.event.inputs.max_towns }}')"
+          if [[ -n "$(git status --porcelain public/data/places.csv)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add public/data/places.csv
+            git commit -m "chore: update places.csv from CSO BUA"
             git push
+          else
+            echo "No changes to commit."
           fi
