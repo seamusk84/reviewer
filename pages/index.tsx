@@ -209,6 +209,10 @@ function useEstates(town: Town | null, debug?: (msg: string) => void) {
   return { estates, loading };
 }
 
+function isUUID(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
 function useReviews(estateId: string | null) {
   const [items, setItems] = React.useState<Review[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -216,7 +220,16 @@ function useReviews(estateId: string | null) {
 
   React.useEffect(() => {
     let cancel = false;
-    if (!estateId) { setItems([]); return; }
+
+    // If no estate selected, or the id isn't a UUID (CSV fallback),
+    // don't query Supabase. Just clear and return.
+    if (!estateId || !isUUID(estateId)) {
+      setItems([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     (async () => {
       setLoading(true); setError(null);
       try {
@@ -241,6 +254,7 @@ function useReviews(estateId: string | null) {
 
   return { items, loading, error };
 }
+
 
 /** ---------- Rolling News ---------- */
 function NewsTicker() {
