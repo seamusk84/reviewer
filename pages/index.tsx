@@ -18,21 +18,42 @@ type Review = {
 
 /** ---------- Utils ---------- */
 const slug = (s: string) =>
-  s.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  s.toLowerCase().normalize("NFKD").replace(/[^\w\s-]/g, "")
+   .replace(/&/g, " and ").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/(^-|-$)/g, "");
 
-/** CSV helper (used for fallbacks) */
+/** County normalisation to avoid CSV mismatches */
+function normalizeCounty(raw: string): string {
+  const x = raw.trim().toLowerCase();
+  const map: Record<string, string> = {
+    "derry": "derry",
+    "londonderry": "derry",
+    "derry/londonderry": "derry",
+    "co derry": "derry",
+    "laois": "laois",
+    "queen's county": "laois",
+    "kerry": "kerry",
+    "co kerry": "kerry",
+    "tipperary": "tipperary",
+    "tipp": "tipperary",
+    "meath": "meath",
+    "co meath": "meath",
+    // add more synonyms if you see them in your CSVs
+  };
+  return map[x] || slug(raw);
+}
+
+/** Ultra-safe CSV loader for files in /public/data */
 async function fetchCSV(path: string): Promise<string[][]> {
   try {
     const res = await fetch(path, { cache: "no-store" });
     if (!res.ok) return [];
-    const text = await res.text();
-    if (!text) return [];
+    const text = (await res.text()) || "";
     return text
-      .replace(/^\uFEFF/, "")
+      .replace(/^\uFEFF/, "") // strip BOM
       .split(/\r?\n/)
       .map((r) => r.trim())
-      .filter(Boolean)
-      .map((r) => r.split(",").map((c) => c.trim()));
+      .filter((r) => r.length > 0)
+      .map((r) => r.split(",").map((c) => c.trim()).filter((c) => c.length > 0));
   } catch {
     return [];
   }
@@ -47,20 +68,13 @@ const COUNTY_LIST: County[] = [
 ].map((name) => ({ id: slug(name), name }));
 
 /** ---------- Error boundary ---------- */
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: any) { super(props); this.state = { hasError: false }; }
   static getDerivedStateFromError() { return { hasError: true }; }
   componentDidCatch(err: any, info: any) { console.error("StreetSage error:", err, info); }
   render() {
     if (this.state.hasError) {
-      return (
-        <div className="card" style={{ marginTop: 16 }}>
-          <div className="small">Something went wrong rendering this section.</div>
-        </div>
-      );
+      return <div className="card" style={{ marginTop: 16 }}><div className="small">Something went wrong rendering this section.</div></div>;
     }
     return this.props.children;
   }
@@ -76,8 +90,10 @@ function useCounties() {
     (async () => {
       try {
         const { data, error } = await supabase.from("counties").select("id,name").order("name");
-        if (!cancel && !error && Array.isArray(data) && data.length) set(data as County[]);
-      } catch {} finally {
+        if (!cancel && !error && Array.isArray(data) && data.length) {
+          set(data as County[]);
+        }
+      } finally {
         if (!cancel) setLoading(false);
       }
     })();
@@ -87,7 +103,7 @@ function useCounties() {
   return { counties, loading };
 }
 
-function useTowns(countyId: string | null) {
+function useTowns(countyId: string | null, debug?: (msg: string) => void) {
   const [towns, set] = React.useState<Town[]>([]);
   const [loading, setLoading] = React.useState(false);
 
@@ -99,28 +115,34 @@ function useTowns(countyId: string | null) {
 
       try {
         const { data, error } = await supabase
-          .from("towns").select("id,name,county_id")
-          .eq("county_id", countyId).order("name");
+          .from("towns")
+          .select("id,name,county_id")
+          .eq("county_id", countyId)
+          .order("name");
 
         if (!cancel && !error && Array.isArray(data) && data.length) {
           set(data as Town[]);
+          debug?.(`DB towns=${data.length}`);
           return;
         }
 
         // CSV fallback: /public/data/places.csv  (Town,County)
         const rows = await fetchCSV("/data/places.csv");
+        debug?.(`CSV places rows=${rows.length}`);
         const body = rows[0]?.[0]?.toLowerCase().includes("town") ? rows.slice(1) : rows;
+
         const fromCsv: Town[] = body
           .filter((r) => r.length >= 2)
           .map(([townName, countyName]) => ({
-            id: slug(`${townName}-${slug(countyName)}`),
+            id: slug(`${townName}-${normalizeCounty(countyName)}`),
             name: townName,
-            county_id: slug(countyName),
+            county_id: normalizeCounty(countyName),
           }))
           .filter((t) => t.county_id === countyId)
           .sort((a, b) => a.name.localeCompare(b.name));
 
         if (!cancel) set(fromCsv);
+        debug?.(`CSV towns for ${countyId} = ${fromCsv.length}`);
       } finally {
         if (!cancel) setLoading(false);
       }
@@ -133,7 +155,7 @@ function useTowns(countyId: string | null) {
 
 const WHOLE_AREA = "Whole area";
 
-function useEstates(town: Town | null) {
+function useEstates(town: Town | null, debug?: (msg: string) => void) {
   const [estates, set] = React.useState<Estate[]>([]);
   const [loading, setLoading] = React.useState(false);
 
@@ -144,17 +166,22 @@ function useEstates(town: Town | null) {
       setLoading(true);
       try {
         const { data, error } = await supabase
-          .from("estates").select("id,name,town_id")
-          .eq("town_id", town.id).order("name");
+          .from("estates")
+          .select("id,name,town_id")
+          .eq("town_id", town.id)
+          .order("name");
 
         if (!cancel && !error && Array.isArray(data) && data.length) {
           set(data as Estate[]);
+          debug?.(`DB estates=${data.length}`);
           return;
         }
 
         // CSV fallback: /public/data/estates.csv  (Estate,Town)
         const rows = await fetchCSV("/data/estates.csv");
+        debug?.(`CSV estates rows=${rows.length}`);
         const body = rows[0]?.[0]?.toLowerCase().includes("estate") ? rows.slice(1) : rows;
+
         const fromCsv: Estate[] = body
           .filter((r) => r.length >= 2)
           .map(([estateName, townName]) => ({
@@ -171,6 +198,7 @@ function useEstates(town: Town | null) {
             : [{ id: `${town.id}__whole`, name: WHOLE_AREA, town_id: town.id }];
 
         if (!cancel) set(withWhole);
+        debug?.(`CSV estates for ${town.name}=${fromCsv.length} (whole=${withWhole.length > 0 && fromCsv.length === 0})`);
       } finally {
         if (!cancel) setLoading(false);
       }
@@ -214,68 +242,9 @@ function useReviews(estateId: string | null) {
   return { items, loading, error };
 }
 
-/** ---------- Suggest Area (requires County & Town) ---------- */
-function SuggestAreaForm({
-  countyId, townId, counties, towns,
-}: {
-  countyId: string | null;
-  townId: string | null;
-  counties: County[];
-  towns: Town[];
-}) {
-  const [estateName, setEstateName] = React.useState("");
-  const [email, setEmail] = React.useState("");
-  const [status, setStatus] = React.useState<"idle"|"saving"|"ok"|"err">("idle");
-
-  const county = counties.find(c => c.id === countyId) || null;
-  const town   = towns.find(t => t.id === townId) || null;
-  const disabled = !county || !town || !estateName;
-
-  async function submit() {
-    try {
-      setStatus("saving");
-      const { error } = await supabase.from("area_suggestions").insert({
-        county_id: county!.id,
-        town_id: town!.id,
-        estate_name: estateName,
-        contact_email: email || null,
-        status: "pending",
-      });
-      if (error) throw error;
-      setStatus("ok");
-      setEstateName("");
-      setEmail("");
-    } catch (e) {
-      console.error(e);
-      setStatus("err");
-    }
-  }
-
-  return (
-    <div className="mt16">
-      <div className="small muted">Your selection</div>
-      <div className="mt8">
-        <span className="badge" style={{marginRight:8}}>County: {county?.name ?? "—"}</span>
-        <span className="badge">Town: {town?.name ?? "—"}</span>
-      </div>
-      <div className="grid mt16">
-        <input className="select" placeholder="Estate/Area name" value={estateName} onChange={(e)=>setEstateName(e.target.value)} />
-        <input className="select" placeholder="(Optional) contact email" value={email} onChange={(e)=>setEmail(e.target.value)} />
-      </div>
-      <button className="btn mt16" disabled={disabled || status==="saving"} onClick={submit}>
-        {status==="saving" ? "Sending…" : "Suggest this area"}
-      </button>
-      {status==="ok" && <div className="small mt16">Thanks — we got your suggestion.</div>}
-      {status==="err" && <div className="small mt16">Couldn’t send. Try again in a minute.</div>}
-      <div className="small mt16 muted">Tip: pick County and Town above before suggesting.</div>
-    </div>
-  );
-}
-
 /** ---------- Rolling News ---------- */
 function NewsTicker() {
   const [items, setItems] = React.useState<string[]>([]);
-
   React.useEffect(() => {
     let cancel = false;
     (async () => {
@@ -289,48 +258,46 @@ function NewsTicker() {
     })();
     return () => { cancel = true; };
   }, []);
-
   if (!items.length) return null;
-
   return (
-    <div style={{
-      overflow: "hidden",
-      whiteSpace: "nowrap",
-      border: "1px solid rgba(0,0,0,.08)",
-      borderRadius: 12,
-      padding: "8px 12px",
-      marginBottom: 16,
-      background: "var(--card)",
-    }}>
+    <div style={{ overflow: "hidden", whiteSpace: "nowrap", border: "1px solid rgba(0,0,0,.08)", borderRadius: 12, padding: "8px 12px", marginBottom: 16, background: "var(--card)" }}>
       <div className="small" style={{ display: "inline-block", animation: "ticker 28s linear infinite" }}>
-        {items.map((t, i) => (
-          <span key={i} style={{ marginRight: 32 }}>• {t}</span>
-        ))}
+        {items.map((t, i) => (<span key={i} style={{ marginRight: 32 }}>• {t}</span>))}
       </div>
-      <style>{`
-        @keyframes ticker {
-          0%   { transform: translateX(100%); }
-          100% { transform: translateX(-100%); }
-        }
-      `}</style>
+      <style>{`@keyframes ticker{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}`}</style>
+    </div>
+  );
+}
+
+/** ---------- Debug strip (only when ?debug=1) ---------- */
+function DebugStrip({ msg }: { msg: string[] }) {
+  const [on, setOn] = React.useState(false);
+  React.useEffect(() => {
+    const u = new URL(window.location.href);
+    setOn(u.searchParams.get("debug") === "1");
+  }, []);
+  if (!on) return null;
+  return (
+    <div style={{ background:"#111827", color:"#e5e7eb", borderRadius:8, padding:"6px 10px", fontSize:12, margin:"8px 0" }}>
+      <strong>Debug:</strong> {msg.join(" • ")}
     </div>
   );
 }
 
 /** ---------- Page ---------- */
 export default function Home() {
+  const debugMsgs: string[] = [];
+  const pushDbg = (s: string) => debugMsgs.push(s);
+
   const { counties, loading: countiesLoading } = useCounties();
 
   const [countyId, setCountyId] = React.useState<string | null>(null);
-  const { towns, loading: townsLoading } = useTowns(countyId);
+  const { towns, loading: townsLoading } = useTowns(countyId, pushDbg);
 
   const [townId, setTownId] = React.useState<string | null>(null);
-  const activeTown = React.useMemo(
-    () => towns.find((t) => t.id === townId) || null,
-    [towns, townId]
-  );
+  const activeTown = React.useMemo(() => towns.find((t) => t.id === townId) || null, [towns, townId]);
 
-  const { estates, loading: estatesLoading } = useEstates(activeTown);
+  const { estates, loading: estatesLoading } = useEstates(activeTown, pushDbg);
   const [estateId, setEstateId] = React.useState<string | null>(null);
 
   const { items: reviews, loading: reviewsLoading, error: reviewsError } = useReviews(estateId);
@@ -342,6 +309,12 @@ export default function Home() {
   const townList   = Array.isArray(towns) ? towns : [];
   const estateList = Array.isArray(estates) ? estates : [];
   const reviewList = Array.isArray(reviews) ? reviews : [];
+
+  pushDbg(`counties=${countyList.length}`);
+  if (countyId) pushDbg(`county=${countyId}`);
+  if (townId)   pushDbg(`town=${townId}`);
+  pushDbg(`towns=${townList.length}`);
+  pushDbg(`estates=${estateList.length}`);
 
   return (
     <>
@@ -356,8 +329,8 @@ export default function Home() {
           <div className="sub">Find resident insights – County → Town → Estate/Area</div>
         </header>
 
-        {/* Rolling News */}
         <NewsTicker />
+        <DebugStrip msg={debugMsgs} />
 
         <ErrorBoundary>
           <main className="card">
@@ -416,20 +389,6 @@ export default function Home() {
                   <div className="small muted">{new Date(r.created_at).toLocaleDateString()}</div>
                 </article>
               ))}
-            </section>
-
-            <hr />
-
-            {/* Suggest Area */}
-            <section className="mt16">
-              <div className="muted small">Don’t see your estate/area?</div>
-              <p className="mt8">Pick a County and Town above, then suggest the Estate/Area here.</p>
-              <SuggestAreaForm
-                countyId={countyId}
-                townId={townId}
-                counties={countyList}
-                towns={townList}
-              />
             </section>
           </main>
         </ErrorBoundary>
