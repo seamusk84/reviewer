@@ -16,10 +16,11 @@ type Review = {
   estate_id: string;
 };
 
+/** Utils */
 const slug = (s: string) =>
   s.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
-/** ---------- 32 counties fallback ---------- */
+/** 32 counties (fallback base) */
 const COUNTY_LIST: County[] = [
   "Antrim","Armagh","Carlow","Cavan","Clare","Cork","Derry","Donegal","Down","Dublin",
   "Fermanagh","Galway","Kerry","Kildare","Kilkenny","Laois","Leitrim","Limerick","Longford",
@@ -27,28 +28,40 @@ const COUNTY_LIST: County[] = [
   "Waterford","Westmeath","Wexford","Wicklow",
 ].map((name) => ({ id: slug(name), name }));
 
-/** ---------- tiny CSV helpers (for /public/data/*.csv) ---------- */
-async function fetchCSV(path: string): Promise<string[][]> {
-  const res = await fetch(path, { cache: "no-store" });
-  if (!res.ok) return [];
-  const text = await res.text();
-  const rows = text.split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
-  return rows.map((r) => r.split(",").map((c) => c.trim()));
+/** Error boundary to avoid white screen */
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: any) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err: any, info: any) { console.error("StreetSage error:", err, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="small">Something went wrong rendering this section.</div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
-/** Try DB first; if empty/error, fall back to CSVs under /public/data */
+/** Data hooks — DB first, otherwise fail-safe to [] */
 function useCounties() {
-  const [counties, set] = React.useState<County[]>([]);
+  const [counties, set] = React.useState<County[]>(COUNTY_LIST);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     let cancel = false;
     (async () => {
-      setLoading(true);
-      const { data, error } = await supabase.from("counties").select("id,name").order("name");
-      if (!cancel) {
-        set(error || !data?.length ? COUNTY_LIST : (data as County[]));
-        setLoading(false);
+      try {
+        const { data, error } = await supabase.from("counties").select("id,name").order("name");
+        if (!cancel) {
+          if (!error && Array.isArray(data) && data.length) set(data as County[]);
+        }
+      } catch (e) {
+        console.warn("Counties load failed (fallback to static).", e);
+      } finally {
+        if (!cancel) setLoading(false);
       }
     })();
     return () => { cancel = true; };
@@ -63,35 +76,24 @@ function useTowns(countyId: string | null) {
 
   React.useEffect(() => {
     let cancel = false;
+    if (!countyId) { set([]); return; }
     (async () => {
-      if (!countyId) { set([]); return; }
       setLoading(true);
-
-      // DB first
-      const { data, error } = await supabase
-        .from("towns").select("id,name,county_id").eq("county_id", countyId).order("name");
-
-      if (!cancel && !error && data?.length) {
-        set(data as Town[]);
-        setLoading(false);
-        return;
+      try {
+        const { data, error } = await supabase
+          .from("towns")
+          .select("id,name,county_id")
+          .eq("county_id", countyId)
+          .order("name");
+        if (!cancel) {
+          set(!error && Array.isArray(data) ? (data as Town[]) : []);
+        }
+      } catch (e) {
+        console.warn("Towns load failed", e);
+        if (!cancel) set([]);
+      } finally {
+        if (!cancel) setLoading(false);
       }
-
-      // Fallback to CSV: /public/data/places.csv
-      // Expected columns (header allowed): Town,County
-      const rows = await fetchCSV("/data/places.csv");
-      const body = rows[0]?.[0]?.toLowerCase().includes("town") ? rows.slice(1) : rows;
-      const fromCsv: Town[] = body
-        .filter((r) => r.length >= 2)
-        .map(([townName, countyName]) => {
-          const cId = slug(countyName);
-          return { id: slug(`${townName}-${cId}`), name: townName, county_id: cId };
-        })
-        .filter((t) => t.county_id === countyId)
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      set(fromCsv);
-      setLoading(false);
     })();
     return () => { cancel = true; };
   }, [countyId]);
@@ -107,42 +109,25 @@ function useEstates(town: Town | null) {
 
   React.useEffect(() => {
     let cancel = false;
+    if (!town) { set([]); return; }
     (async () => {
-      if (!town) { set([]); return; }
       setLoading(true);
-
-      // DB first
-      const { data, error } = await supabase
-        .from("estates").select("id,name,town_id").eq("town_id", town.id).order("name");
-
-      if (!cancel && !error && data?.length) {
-        set(data as Estate[]);
-        setLoading(false);
-        return;
+      try {
+        const { data, error } = await supabase
+          .from("estates")
+          .select("id,name,town_id")
+          .eq("town_id", town.id)
+          .order("name");
+        if (!cancel) {
+          const list = !error && Array.isArray(data) ? (data as Estate[]) : [];
+          set(list.length ? list : [{ id: `${town.id}__whole`, name: WHOLE_AREA, town_id: town.id }]);
+        }
+      } catch (e) {
+        console.warn("Estates load failed", e);
+        if (!cancel) set([{ id: `${town.id}__whole`, name: WHOLE_AREA, town_id: town.id }]);
+      } finally {
+        if (!cancel) setLoading(false);
       }
-
-      // Fallback to CSV: /public/data/estates.csv
-      // Expected columns (header allowed): Estate,Town
-      const rows = await fetchCSV("/data/estates.csv");
-      const body = rows[0]?.[0]?.toLowerCase().includes("estate") ? rows.slice(1) : rows;
-      const fromCsv: Estate[] = body
-        .filter((r) => r.length >= 2)
-        .map(([estateName, townName]) => ({
-          id: slug(`${estateName}-${townName}`),
-          name: estateName,
-          town_id: slug(`${townName}-${town.county_id}`),
-        }))
-        .filter((e) => e.town_id === town.id)
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      // If none, offer a synthetic "Whole area"
-      const withWhole =
-        fromCsv.length > 0
-          ? fromCsv
-          : [{ id: `${town.id}__whole`, name: WHOLE_AREA, town_id: town.id }];
-
-      set(withWhole);
-      setLoading(false);
     })();
     return () => { cancel = true; };
   }, [town]);
@@ -157,19 +142,24 @@ function useReviews(estateId: string | null) {
 
   React.useEffect(() => {
     let cancel = false;
+    if (!estateId) { setItems([]); return; }
     (async () => {
-      if (!estateId) { setItems([]); return; }
       setLoading(true); setError(null);
-      const { data, error } = await supabase
-        .from("reviews")
-        .select("id,rating,title,body,created_at,estate_id")
-        .eq("estate_id", estateId)
-        .order("created_at", { ascending: false })
-        .limit(25);
-      if (!cancel) {
-        if (error) setError(error.message);
-        setItems((data || []) as Review[]);
-        setLoading(false);
+      try {
+        const { data, error } = await supabase
+          .from("reviews")
+          .select("id,rating,title,body,created_at,estate_id")
+          .eq("estate_id", estateId)
+          .order("created_at", { ascending: false })
+          .limit(25);
+        if (!cancel) {
+          if (error) setError(error.message);
+          setItems(Array.isArray(data) ? (data as Review[]) : []);
+        }
+      } catch (e: any) {
+        if (!cancel) setError(e?.message || "Unknown error");
+      } finally {
+        if (!cancel) setLoading(false);
       }
     })();
     return () => { cancel = true; };
@@ -178,18 +168,16 @@ function useReviews(estateId: string | null) {
   return { items, loading, error };
 }
 
-
-/** -------- Suggest Area: inline form (no mail client needed) -------- */
+/** Inline Suggest Area form (writes to Supabase when clicked) */
 function SuggestAreaForm({ countyId, townId }: { countyId: string | null; townId: string | null }) {
   const [estateName, setEstateName] = React.useState("");
   const [email, setEmail] = React.useState("");
-  const [status, setStatus] = React.useState<"idle"|"saving"|"ok"|"err">("idle");
+  const [status, setStatus] = React.useState<"idle" | "saving" | "ok" | "err">("idle");
   const disabled = !countyId || !townId || !estateName;
 
   async function submit() {
     try {
       setStatus("saving");
-      // create table area_suggestions first (see SQL below)
       const { error } = await supabase.from("area_suggestions").insert({
         county_id: countyId,
         town_id: townId,
@@ -201,6 +189,7 @@ function SuggestAreaForm({ countyId, townId }: { countyId: string | null; townId
       setEstateName("");
       setEmail("");
     } catch (e) {
+      console.error(e);
       setStatus("err");
     }
   }
@@ -221,7 +210,7 @@ function SuggestAreaForm({ countyId, townId }: { countyId: string | null; townId
           onChange={(e) => setEmail(e.target.value)}
         />
       </div>
-      <button className="btn mt16" disabled={disabled || status==="saving"} onClick={submit}>
+      <button className="btn mt16" disabled={disabled || status === "saving"} onClick={submit}>
         {status === "saving" ? "Sending…" : "Suggest this area"}
       </button>
       {status === "ok" && <div className="small mt16">Thanks — we got your suggestion.</div>}
@@ -230,56 +219,13 @@ function SuggestAreaForm({ countyId, townId }: { countyId: string | null; townId
   );
 }
 
-/** -------- Optional: Rolling News ticker (uses /api/news if present) -------- */
-function NewsTicker() {
-  const [items, setItems] = React.useState<string[]>([]);
-  React.useEffect(() => {
-    let cancel = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/news");
-        if (!res.ok) return;
-        const data = await res.json(); // expect { items: string[] } or similar
-        if (!cancel) setItems(Array.isArray(data?.items) ? data.items : []);
-      } catch {}
-    })();
-    return () => { cancel = true; };
-  }, []);
-  if (!items.length) return null;
-  return (
-    <div style={{
-      overflow: "hidden",
-      whiteSpace: "nowrap",
-      border: "1px solid rgba(255,255,255,.08)",
-      borderRadius: 12,
-      padding: "8px 12px",
-      marginBottom: 16,
-      background: "#0b1220"
-    }}>
-      <div className="small" style={{
-        display: "inline-block",
-        animation: "ticker 30s linear infinite",
-      }}>
-        {items.map((t, i) => (
-          <span key={i} style={{ marginRight: 32 }}>• {t}</span>
-        ))}
-      </div>
-      <style>{`
-        @keyframes ticker {
-          0%   { transform: translateX(100%); }
-          100% { transform: translateX(-100%); }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-/** ---------------- Page ---------------- */
+/** Page */
 export default function Home() {
   const { counties, loading: countiesLoading } = useCounties();
-  const [countyId, setCountyId] = React.useState<string | null>(null);
 
+  const [countyId, setCountyId] = React.useState<string | null>(null);
   const { towns, loading: townsLoading } = useTowns(countyId);
+
   const [townId, setTownId] = React.useState<string | null>(null);
   const activeTown = React.useMemo(
     () => towns.find((t) => t.id === townId) || null,
@@ -294,6 +240,12 @@ export default function Home() {
   React.useEffect(() => { setTownId(null); setEstateId(null); }, [countyId]);
   React.useEffect(() => { setEstateId(null); }, [townId]);
 
+  // Ensure arrays are always arrays during render
+  const countyList = Array.isArray(counties) ? counties : [];
+  const townList = Array.isArray(towns) ? towns : [];
+  const estateList = Array.isArray(estates) ? estates : [];
+  const reviewList = Array.isArray(reviews) ? reviews : [];
+
   return (
     <>
       <Head>
@@ -307,70 +259,96 @@ export default function Home() {
           <div className="sub">Find resident insights – County → Town → Estate/Area</div>
         </header>
 
-        <NewsTicker />
+        <ErrorBoundary>
+          <main className="card">
+            <div className="grid">
+              <div>
+                <label className="small">County</label>
+                <select
+                  className="select mt8"
+                  value={countyId ?? ""}
+                  onChange={(e) => setCountyId(e.target.value || null)}
+                >
+                  <option value="">Select a county</option>
+                  {countyList.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                {countiesLoading && <div className="small mt16">Loading counties…</div>}
+              </div>
 
-        <main className="card">
-          <div className="grid">
-            <div>
-              <label className="small">County</label>
-              <select className="select mt8" value={countyId ?? ""} onChange={(e)=>setCountyId(e.target.value||null)}>
-                <option value="">Select a county</option>
-                {counties.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              {countiesLoading && <div className="small mt16">Loading counties…</div>}
+              <div>
+                <label className="small">Town</label>
+                <select
+                  className="select mt8"
+                  value={townId ?? ""}
+                  onChange={(e) => setTownId(e.target.value || null)}
+                  disabled={!countyId}
+                >
+                  <option value="">{countyId ? "Select a town" : "Select a county first"}</option>
+                  {townList.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                {townsLoading && <div className="small mt16">Loading towns…</div>}
+              </div>
             </div>
 
-            <div>
-              <label className="small">Town</label>
-              <select className="select mt8" value={townId ?? ""} onChange={(e)=>setTownId(e.target.value||null)} disabled={!countyId}>
-                <option value="">{countyId ? "Select a town" : "Select a county first"}</option>
-                {towns.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            <div className="mt16">
+              <label className="small">Estate/Area</label>
+              <select
+                className="select mt8"
+                value={estateId ?? ""}
+                onChange={(e) => setEstateId(e.target.value || null)}
+                disabled={!townId}
+              >
+                <option value="">{townId ? "Select an estate/area" : "Select a town first"}</option>
+                {estateList.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
               </select>
-              {townsLoading && <div className="small mt16">Loading towns…</div>}
+              {estatesLoading && <div className="small mt16">Loading estates…</div>}
             </div>
-          </div>
 
-          <div className="mt16">
-            <label className="small">Estate/Area</label>
-            <select className="select mt8" value={estateId ?? ""} onChange={(e)=>setEstateId(e.target.value||null)} disabled={!townId}>
-              <option value="">{townId ? "Select an estate/area" : "Select a town first"}</option>
-              {estates.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
-            {estatesLoading && <div className="small mt16">Loading estates…</div>}
-          </div>
+            <div className="mt24">
+              <button
+                className="btn"
+                disabled={!estateId}
+                onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })}
+              >
+                View reviews
+              </button>
+            </div>
 
-          <div className="mt24">
-            <button className="btn" disabled={!estateId} onClick={()=>window.scrollTo({ top: document.body.scrollHeight, behavior:"smooth" })}>
-              View reviews
-            </button>
-          </div>
+            <hr />
 
-          <hr />
+            <section id="reviews" className="mt16">
+              <div className="muted small">Reviews</div>
+              {!estateId && <div className="mt8 muted">Pick an estate/area to see recent reviews.</div>}
+              {estateId && reviewsLoading && <div className="mt8">Loading reviews…</div>}
+              {estateId && reviewsError && <div className="mt8">Couldn’t load reviews: {reviewsError}</div>}
+              {estateId && !reviewsLoading && !reviewsError && reviewList.length === 0 && (
+                <div className="mt8 muted">No reviews yet for this selection.</div>
+              )}
+              {reviewList.map((r) => (
+                <article key={r.id} className="review">
+                  <div className="badge">★ {r.rating}/5</div>
+                  {r.title && <h3 style={{ margin: "8px 0 6px" }}>{r.title}</h3>}
+                  {r.body && <p style={{ margin: "0 0 8px" }}>{r.body}</p>}
+                  <div className="small muted">{new Date(r.created_at).toLocaleDateString()}</div>
+                </article>
+              ))}
+            </section>
 
-          <section id="reviews" className="mt16">
-            <div className="muted small">Reviews</div>
-            {!estateId && <div className="mt8 muted">Pick an estate/area to see recent reviews.</div>}
-            {estateId && reviewsLoading && <div className="mt8">Loading reviews…</div>}
-            {estateId && reviewsError && <div className="mt8">Couldn’t load reviews: {reviewsError}</div>}
-            {estateId && !reviewsLoading && !reviewsError && reviews.length === 0 && <div className="mt8 muted">No reviews yet for this selection.</div>}
-            {reviews.map((r) => (
-              <article key={r.id} className="review">
-                <div className="badge">★ {r.rating}/5</div>
-                {r.title && <h3 style={{margin:"8px 0 6px"}}>{r.title}</h3>}
-                {r.body && <p style={{margin:"0 0 8px"}}>{r.body}</p>}
-                <div className="small muted">{new Date(r.created_at).toLocaleDateString()}</div>
-              </article>
-            ))}
-          </section>
+            <hr />
 
-          <hr />
-
-          <section className="mt16">
-            <div className="muted small">Don’t see your estate/area?</div>
-            <p className="mt8">Suggest it here — no email app needed.</p>
-            <SuggestAreaForm countyId={countyId} townId={townId} />
-          </section>
-        </main>
+            <section className="mt16">
+              <div className="muted small">Don’t see your estate/area?</div>
+              <p className="mt8">Suggest it here — no email app needed.</p>
+              <SuggestAreaForm countyId={countyId} townId={townId} />
+            </section>
+          </main>
+        </ErrorBoundary>
 
         <footer className="mt24 small muted">Built with ❤️ in Ireland • StreetSage</footer>
       </div>
