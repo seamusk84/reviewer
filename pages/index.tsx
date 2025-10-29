@@ -1,296 +1,331 @@
+// pages/index.tsx
 import * as React from "react";
 import Head from "next/head";
-import SuggestEstate from "../components/SuggestEstate";
+import { supabase } from "../lib/supabaseClient";
 
-/* ---------- Types ---------- */
-type Estate = {
-  id: string;
-  name: string | null;
-  town: string | null;
-  county: string | null;
-};
-
+/** --- Types (kept local so you don't need a separate types.ts) --- */
+type County = { id: string; name: string };
+type Town = { id: string; name: string; county_id: string };
+type Estate = { id: string; name: string; town_id: string };
 type Review = {
   id: string;
   rating: number;
   title: string | null;
   body: string | null;
   created_at: string;
+  estate_id: string;
 };
 
-/* ---------- Reviews list (reads approved via /api/reviews) ---------- */
-function Reviews({ estateId }: { estateId: string | null }) {
+/** --- Minimal fallback so the UI isn't empty if the DB is blank or blocked by RLS --- */
+const FALLBACK = {
+  counties: [
+    { id: "kildare", name: "Kildare" },
+    { id: "clare", name: "Clare" },
+  ] as County[],
+  towns: [
+    { id: "celbridge", name: "Celbridge", county_id: "kildare" },
+    { id: "ennistymon", name: "Ennistymon", county_id: "clare" },
+  ] as Town[],
+  estates: [
+    { id: "castle-village", name: "Castle Village", town_id: "celbridge" },
+    { id: "abbey-view", name: "Abbey View", town_id: "ennistymon" },
+  ] as Estate[],
+};
+
+/** --- Data hooks --- */
+function useCounties() {
+  const [counties, setCounties] = React.useState<County[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("counties")
+        .select("id,name")
+        .order("name");
+      if (!cancel) {
+        setCounties(error || !data?.length ? FALLBACK.counties : (data as County[]));
+        setLoading(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  return { counties, loading };
+}
+
+function useTowns(countyId: string | null) {
+  const [towns, setTowns] = React.useState<Town[]>([]);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancel = false;
+    (async () => {
+      if (!countyId) {
+        setTowns([]);
+        return;
+      }
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("towns")
+        .select("id,name,county_id")
+        .eq("county_id", countyId)
+        .order("name");
+      if (!cancel) {
+        setTowns(
+          error || !data?.length
+            ? FALLBACK.towns.filter((t) => t.county_id === countyId)
+            : (data as Town[])
+        );
+        setLoading(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [countyId]);
+
+  return { towns, loading };
+}
+
+function useEstates(townId: string | null) {
+  const [estates, setEstates] = React.useState<Estate[]>([]);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancel = false;
+    (async () => {
+      if (!townId) {
+        setEstates([]);
+        return;
+      }
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("estates")
+        .select("id,name,town_id")
+        .eq("town_id", townId)
+        .order("name");
+      if (!cancel) {
+        setEstates(
+          error || !data?.length
+            ? FALLBACK.estates.filter((e) => e.town_id === townId)
+            : (data as Estate[])
+        );
+        setLoading(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [townId]);
+
+  return { estates, loading };
+}
+
+function useReviews(estateId: string | null) {
   const [items, setItems] = React.useState<Review[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!estateId) { setItems([]); return; }
-    let cancelled = false;
+    let cancel = false;
     (async () => {
-      setLoading(true); setError(null);
-      try {
-        const r = await fetch(`/api/reviews?estateId=${estateId}`);
-        const j = await r.json();
-        if (!r.ok) throw new Error(j?.error || "Failed to fetch reviews");
-        if (!cancelled) setItems(j.reviews || []);
-      } catch (e: any) {
-        if (!cancelled) setError(e.message);
-      } finally {
-        if (!cancelled) setLoading(false);
+      if (!estateId) {
+        setItems([]);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      const { data, error } = await supabase
+        .from("reviews")
+        .select("id,rating,title,body,created_at,estate_id")
+        .eq("estate_id", estateId)
+        .order("created_at", { ascending: false })
+        .limit(25);
+      if (!cancel) {
+        if (error) setError(error.message);
+        setItems((data || []) as Review[]);
+        setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancel = true;
+    };
   }, [estateId]);
 
-  if (!estateId) return null;
-  if (loading) return <p className="mt-3 text-sm opacity-70">Loading reviews…</p>;
-  if (error) return <p className="mt-3 text-sm text-red-600">{error}</p>;
-  if (!items.length) return <p className="mt-3 text-sm opacity-70">No reviews yet.</p>;
-
-  return (
-    <div className="mt-3 space-y-3">
-      {items.map((r) => (
-        <div key={r.id} className="border rounded p-3">
-          <p className="text-xs opacity-60">{new Date(r.created_at).toLocaleDateString()}</p>
-          <p className="font-medium">{r.title || "(no title)"} • {r.rating}/5</p>
-          <p className="whitespace-pre-wrap mt-1">{r.body}</p>
-        </div>
-      ))}
-    </div>
-  );
+  return { items, loading, error };
 }
 
-/* ---------- Page ---------- */
-export default function HomePage() {
-  /* Estates data for dropdowns */
-  const [estates, setEstates] = React.useState<Estate[]>([]);
-  const [loadingEstates, setLoadingEstates] = React.useState(true);
-  const [estatesErr, setEstatesErr] = React.useState<string | null>(null);
+/** --- Page --- */
+export default function Home() {
+  const { counties, loading: countiesLoading } = useCounties();
 
-  /* Selections */
-  const [county, setCounty] = React.useState<string>("");
-  const [town, setTown] = React.useState<string>("");
-  const [estateId, setEstateId] = React.useState<string>("");
+  const [countyId, setCountyId] = React.useState<string | null>(null);
+  const { towns, loading: townsLoading } = useTowns(countyId);
 
-  /* Review form */
-  const [rating, setRating] = React.useState<number>(5);
-  const [title, setTitle] = React.useState<string>("");
-  const [body, setBody] = React.useState<string>("");
+  const [townId, setTownId] = React.useState<string | null>(null);
+  const { estates, loading: estatesLoading } = useEstates(townId);
 
-  const [submitting, setSubmitting] = React.useState(false);
-  const [submitMsg, setSubmitMsg] = React.useState<string | null>(null);
-  const [submitErr, setSubmitErr] = React.useState<string | null>(null);
+  const [estateId, setEstateId] = React.useState<string | null>(null);
+  const {
+    items: reviews,
+    loading: reviewsLoading,
+    error: reviewsError,
+  } = useReviews(estateId);
 
-  /* Load estates once */
+  // Reset children when parent changes
   React.useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch("/api/estates");
-        const j = await r.json();
-        if (!r.ok) throw new Error(j?.error || "Failed to load estates");
-        setEstates(j.estates || []);
-      } catch (e: any) {
-        setEstatesErr(e.message);
-      } finally {
-        setLoadingEstates(false);
-      }
-    })();
-  }, []);
+    setTownId(null);
+    setEstateId(null);
+  }, [countyId]);
 
-  /* Derived options */
-  const counties = React.useMemo(
-    () => Array.from(new Set(estates.map(e => e.county || "").filter(Boolean))).sort(),
-    [estates]
-  );
-
-  const towns = React.useMemo(
-    () =>
-      Array.from(
-        new Set(
-          estates
-            .filter(e => (e.county || "") === county)
-            .map(e => e.town || "")
-            .filter(Boolean)
-        )
-      ).sort(),
-    [estates, county]
-  );
-
-  const estatesForTown = React.useMemo(
-    () => estates.filter(e => (e.county || "") === county && (e.town || "") === town),
-    [estates, county, town]
-  );
-
-  /* Reset child selections when parent changes */
-  React.useEffect(() => { setTown(""); setEstateId(""); }, [county]);
-  React.useEffect(() => { setEstateId(""); }, [town]);
-
-  const selectedEstateId = estateId || null;
-
-  /* Submit review */
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true); setSubmitMsg(null); setSubmitErr(null);
-    try {
-      if (!selectedEstateId) throw new Error("Pick an estate first.");
-      if (!body.trim()) throw new Error("Please enter your review text.");
-
-      const r = await fetch("/api/reviews", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          estateId: selectedEstateId,
-          rating,
-          title: title.trim() || null,
-          body: body.trim(),
-        }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j?.error || "Failed to submit review");
-
-      setSubmitMsg("Submitted! Your review will appear once approved.");
-      setTitle(""); setBody(""); setRating(5);
-    } catch (e: any) {
-      setSubmitErr(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  React.useEffect(() => {
+    setEstateId(null);
+  }, [townId]);
 
   return (
     <>
       <Head>
-        <title>Ireland Estate Reviews</title>
-        <meta name="description" content="Independent reviews of Irish housing estates" />
+        <title>StreetSage – Honest estate reviews across Ireland</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
-      <main className="max-w-3xl mx-auto p-6 space-y-6">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Ireland Estate Reviews</h1>
-          <p className="text-sm opacity-80">Pick your area, submit a review, we’ll publish it once approved.</p>
+      <div className="container">
+        <header className="header">
+          <h1 className="h1">StreetSage</h1>
+          <div className="sub">Find resident insights – County → Town → Estate</div>
         </header>
 
-        {/* Cascading selectors */}
-        <section className="border rounded p-4 space-y-3">
-          <h2 className="font-medium">Select your area</h2>
-
-          {loadingEstates && <p className="text-sm opacity-70">Loading areas…</p>}
-          {estatesErr && <p className="text-sm text-red-600">{estatesErr}</p>}
-
-          {!loadingEstates && !estatesErr && (
-            <div className="grid gap-3 md:grid-cols-3">
-              <div>
-                <label className="text-sm font-medium">County</label>
-                <select
-                  className="border rounded p-2 w-full"
-                  value={county}
-                  onChange={(e) => setCounty(e.target.value)}
-                >
-                  <option value="">Select county…</option>
-                  {counties.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium">Town</label>
-                <select
-                  className="border rounded p-2 w-full"
-                  value={town}
-                  onChange={(e) => setTown(e.target.value)}
-                  disabled={!county}
-                >
-                  <option value="">Select town…</option>
-                  {towns.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium">Estate</label>
-                <select
-                  className="border rounded p-2 w-full"
-                  value={estateId}
-                  onChange={(e) => setEstateId(e.target.value)}
-                  disabled={!town}
-                >
-                  <option value="">Select estate…</option>
-                  {estatesForTown.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name || "(Unnamed)"}{e.town ? `, ${e.town}` : ""}{e.county ? `, ${e.county}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* “Don’t see your area?” */}
-        <section>
-          <SuggestEstate />
-        </section>
-
-        {/* Review form */}
-        <section className="border rounded p-4 space-y-3">
-          <h2 className="font-medium">Write a review</h2>
-          <form className="space-y-3" onSubmit={handleSubmit}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label className="text-sm font-medium">Rating</label>
-                <select
-                  className="border rounded p-2 w-full"
-                  value={rating}
-                  onChange={(e) => setRating(Number(e.target.value))}
-                >
-                  {[5, 4, 3, 2, 1].map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-sm font-medium">Title (optional)</label>
-                <input
-                  className="border rounded p-2 w-full"
-                  placeholder="Short summary"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-              </div>
+        <main className="card">
+          {/* County / Town */}
+          <div className="grid">
+            <div>
+              <label className="small">County</label>
+              <select
+                className="select mt8"
+                value={countyId ?? ""}
+                onChange={(e) => setCountyId(e.target.value || null)}
+              >
+                <option value="">Select a county</option>
+                {counties.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {countiesLoading && <div className="small mt16">Loading counties…</div>}
             </div>
 
             <div>
-              <label className="text-sm font-medium">Your review</label>
-              <textarea
-                className="border rounded p-2 w-full min-h-[120px]"
-                placeholder="Share your experience…"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-              />
+              <label className="small">Town</label>
+              <select
+                className="select mt8"
+                value={townId ?? ""}
+                onChange={(e) => setTownId(e.target.value || null)}
+                disabled={!countyId}
+              >
+                <option value="">
+                  {countyId ? "Select a town" : "Select a county first"}
+                </option>
+                {towns.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              {townsLoading && <div className="small mt16">Loading towns…</div>}
             </div>
+          </div>
 
-            {submitErr && <p className="text-sm text-red-600">{submitErr}</p>}
-            {submitMsg && <p className="text-sm text-green-700">{submitMsg}</p>}
-
-            <button
-              className="px-4 py-2 border rounded"
-              disabled={submitting || !selectedEstateId}
-              type="submit"
+          {/* Estate */}
+          <div className="mt16">
+            <label className="small">Estate</label>
+            <select
+              className="select mt8"
+              value={estateId ?? ""}
+              onChange={(e) => setEstateId(e.target.value || null)}
+              disabled={!townId}
             >
-              {submitting ? "Submitting…" : "Submit review"}
-            </button>
-          </form>
-        </section>
+              <option value="">
+                {townId ? "Select an estate" : "Select a town first"}
+              </option>
+              {estates.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </select>
+            {estatesLoading && <div className="small mt16">Loading estates…</div>}
+          </div>
 
-        {/* Approved reviews */}
-        <section className="border rounded p-4">
-          <h2 className="font-medium">Approved reviews</h2>
-          <Reviews estateId={selectedEstateId} />
-        </section>
-      </main>
+          {/* CTA */}
+          <div className="mt24">
+            <button
+              className="btn"
+              disabled={!estateId}
+              onClick={() =>
+                window.scrollTo({
+                  top: document.body.scrollHeight,
+                  behavior: "smooth",
+                })
+              }
+            >
+              View reviews
+            </button>
+          </div>
+
+          <hr />
+
+          {/* Reviews */}
+          <section id="reviews" className="mt16">
+            <div className="muted small">Reviews</div>
+            {!estateId && (
+              <div className="mt8 muted">Pick an estate to see recent reviews.</div>
+            )}
+            {estateId && reviewsLoading && <div className="mt8">Loading reviews…</div>}
+            {estateId && reviewsError && (
+              <div className="mt8">Couldn’t load reviews: {reviewsError}</div>
+            )}
+            {estateId && !reviewsLoading && !reviewsError && reviews.length === 0 && (
+              <div className="mt8 muted">No reviews yet for this estate.</div>
+            )}
+            {reviews.map((r) => (
+              <article key={r.id} className="review">
+                <div className="badge">★ {r.rating}/5</div>
+                {r.title && <h3 style={{ margin: "8px 0 6px" }}>{r.title}</h3>}
+                {r.body && <p style={{ margin: "0 0 8px" }}>{r.body}</p>}
+                <div className="small muted">
+                  {new Date(r.created_at).toLocaleDateString()}
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <hr />
+
+          {/* Suggest estate */}
+          <section className="mt16">
+            <div className="muted small">Don’t see your estate?</div>
+            <p className="mt8">
+              Suggest a new estate and we’ll add it after a quick check.
+            </p>
+            <a
+              className="btn"
+              href="mailto:streetsage+suggest@yourdomain.ie?subject=Suggest%20Estate"
+            >
+              Suggest an estate
+            </a>
+          </section>
+        </main>
+
+        <footer className="mt24 small muted">
+          Built with ❤️ in Ireland • StreetSage
+        </footer>
+      </div>
     </>
   );
 }
