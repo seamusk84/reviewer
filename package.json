@@ -2,13 +2,13 @@
   "name": "reviewer",
   "private": true,
   "version": "1.0.0",
- "scripts": {
-  "dev": "next dev",
-  "build": "next build",
-  "start": "next start",
-  "build:places": "node tools/make-places-from-cso.js",
-  "postinstall": "npm run build:places || true"
-},
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "build:places": "node tools/make-places-from-cso.js",
+    "postinstall": "npm run build:places || true"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
     "next": "14.2.5",
