@@ -23,8 +23,8 @@ jobs:
 
       - name: Build places.csv from CSO file
         run: |
+          npm ci || npm i
           npm run build:places
-          echo "Changed files:"
           git status --porcelain
 
       - name: Commit updated places.csv (if changed)
