@@ -151,14 +151,14 @@ function useEstates(town: Town | null) {
 }
 
 function useReviews(estateId: string | null) {
-  const [items, set] = React.useState<Review[]>([]);
+  const [items, setItems] = React.useState<Review[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let cancel = false;
     (async () => {
-      if (!estateId) { set([]); return; }
+      if (!estateId) { setItems([]); return; }
       setLoading(true); setError(null);
       const { data, error } = await supabase
         .from("reviews")
@@ -168,7 +168,7 @@ function useReviews(estateId: string | null) {
         .limit(25);
       if (!cancel) {
         if (error) setError(error.message);
-        set((data || []) as Review[]);
+        setItems((data || []) as Review[]);
         setLoading(false);
       }
     })();
@@ -177,6 +177,7 @@ function useReviews(estateId: string | null) {
 
   return { items, loading, error };
 }
+
 
 /** -------- Suggest Area: inline form (no mail client needed) -------- */
 function SuggestAreaForm({ countyId, townId }: { countyId: string | null; townId: string | null }) {
